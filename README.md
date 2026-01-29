@@ -35,5 +35,5 @@ DEBUG=false
 
 4) Запуск:
 ```
-python -m src.bot.main
+python3 -m src.bot.main
 ```

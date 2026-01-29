@@ -6,6 +6,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiogram-dialog>=2.4.0",
+    "aiosqlite>=0.22.1",
+    "alembic>=1.18.2",
+    "asyncpg>=0.31.0",
+    "greenlet>=3.3.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
+    "sqlalchemy>=2.0.46",
 ]

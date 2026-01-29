@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ADMIN_ID: str
     LOG_LEVEL: str
     DEBUG: bool
+    DATABASE_URL: str
 
 
 settings = Settings()
