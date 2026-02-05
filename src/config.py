@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str
     DEBUG: bool
     DATABASE_URL: str
+    YCLIENTS_API_URL: str = "https://api.yclients.com/api/v1"
+    YCLIENTS_COMPANY_ID: int
+    YCLIENTS_PARTNER_TOKEN: str
+    YCLIENTS_USER_TOKEN: str
 
 
 settings = Settings()

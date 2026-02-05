@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiogram-dialog>=2.4.0",
+    "aiohttp>=3.13.3",
     "aiosqlite>=0.22.1",
     "alembic>=1.18.2",
     "asyncpg>=0.31.0",
