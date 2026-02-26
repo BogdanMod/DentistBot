@@ -116,6 +116,7 @@ class YClientsClient:
                     **kwargs,
                 ) as response:
                     data = await response.json()
+                    print(data)
 
                     if response.status == 429:
                         raise YClientsRateLimitError("Too many requests")
@@ -257,7 +258,8 @@ class YClientsClient:
         params = {}
 
         if phone:
-            params["phone"] = phone
+            normalized = "".join(filter(str.isdigit, phone))
+            params["phone"] = normalized
         elif email:
             params["email"] = email
         else:

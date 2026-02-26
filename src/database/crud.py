@@ -44,6 +44,17 @@ class UserCRUD:
         await session.refresh(user)
         return user
     
+    @staticmethod
+    async def get_by_yclients_client_id(
+        session: AsyncSession,
+        yclients_client_id: int
+    ) -> Optional[User]:
+        """Получить пользователя по YClients client ID"""
+        result = await session.execute(
+            select(User).where(User.yclients_client_id == yclients_client_id)
+        )
+        return result.scalar_one_or_none()
+        
     
 # Класс ReminderCRUD
 

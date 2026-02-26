@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     YCLIENTS_COMPANY_ID: int
     YCLIENTS_PARTNER_TOKEN: str
     YCLIENTS_USER_TOKEN: str
+    REMINDER_HOURS_BEFORE: int
+    REMINDER_CHECK_TIME: str
+
 
 
 settings = Settings()
