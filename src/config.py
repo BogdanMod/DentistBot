@@ -7,7 +7,7 @@ class Settings(BaseSettings):
         case_sensitive = False
     )
     TELEGRAM_TOKEN: str
-    ADMIN_ID: str
+    ADMIN_CHAT_ID: int
     LOG_LEVEL: str
     DEBUG: bool
     DATABASE_URL: str

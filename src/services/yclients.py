@@ -116,7 +116,6 @@ class YClientsClient:
                     **kwargs,
                 ) as response:
                     data = await response.json()
-                    print(data)
 
                     if response.status == 429:
                         raise YClientsRateLimitError("Too many requests")

@@ -1,10 +1,11 @@
 """Планировщик автоматических задач"""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import settings
 from src.database.crud import ReminderCRUD, UserCRUD
@@ -34,7 +35,7 @@ class ReminderScheduler:
         """
         logger.info("Starting reminder check...")
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         target_time = now + timedelta(hours=settings.REMINDER_HOURS_BEFORE)
 
         try:
@@ -76,10 +77,9 @@ class ReminderScheduler:
                     if not existing:
                         reminder = await ReminderCRUD.create(
                             session=session,
-                            user_id=user.id,
                             user_chat_id=user.chat_id,
                             record_id=record["id"],
-                            appointment_datetime=datetime.fromisoformat(record["datetime"]),
+                            appointment_datetime=datetime.fromisoformat(record["datetime"]).replace(tzinfo=timezone.utc).astimezone(),
                             service_name=record["services"][0]["title"] if record.get("services") else "Услуга",
                             staff_name=record["staff"]["name"] if record.get("staff") else "Мастер",
                         )
@@ -104,17 +104,17 @@ class ReminderScheduler:
 
     def start(self) -> None:
         """Запуск планировщика"""
-        hour, minute = settings.REMINDER_CHECK_TIME.split(":")
 
         self.scheduler.add_job(
             func=self.check_and_send_reminders,
-            trigger=CronTrigger(hour=int(hour), minute=int(minute)),
+            # trigger=CronTrigger(minute=0),
+            trigger=IntervalTrigger(minutes=1),
             id="check_reminders",
             replace_existing=True,
         )
 
         logger.info(
-            f"Scheduler started. Will check reminders daily at {settings.REMINDER_CHECK_TIME}"
+            f"Scheduler started. Will check reminders every hour at :00"
         )
 
         self.scheduler.start()

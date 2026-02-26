@@ -37,7 +37,7 @@ async def send_reminder_notification(bot: Bot, reminder: Reminder) -> bool:
         )
 
         async for session in db_manager.get_session():
-            await ReminderCRUD.mark_as_sent(session=session, reminder_id=reminder.id)
+            await ReminderCRUD.mark_as_sent(session=session, record_id=reminder.record_id)
             await NotificationLogCRUD.log_notification(
                 session=session,
                 chat_id=reminder.user_chat_id,

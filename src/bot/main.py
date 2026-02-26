@@ -15,6 +15,8 @@ from src.bot.handlers.callbacks import callback_router
 
 from src.services.scheduler import ReminderScheduler
 
+from src.services.yclients import yclients_client
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -58,7 +60,7 @@ async def main() -> None:
         scheduler.shutdown()
         await bot.session.close()
         await db_manager.close()
-        await yclients_clients.close()
+        await yclients_client.close()
 
 
 if __name__ == "__main__":
