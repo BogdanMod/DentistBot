@@ -202,21 +202,38 @@ class YClientsClient:
         Returns:
             True если успешно, False иначе
         """
-        endpoint = f"record/{self.company_id}/{record_id}"
+        record = await self.get_record(record_id)
+        if not record:
+            logger.error(f"Cannot update record {record_id}: record not found")
+            return False
 
-        data: dict[str, Any] = {"attendance": 0}
-
+        attendance = 0
         if status == "confirmed":
-            data["attendance"] = 1
+            attendance = 1
         elif status == "deleted":
-            data["attendance"] = -1
+            attendance = -1
+
+        data: dict[str, Any] = {
+            "datetime": record["datetime"],
+            "seance_length": record["seance_length"],
+            "attendance": attendance,
+            "staff_id": record["staff"]["id"],
+            "services": [{"id": s["id"], "amount": s.get("amount", 1)} for s in record.get("services", [])],
+            "client": {
+                "id": record["client"]["id"],
+                "name": record["client"].get("name", ""),
+                "phone": record["client"].get("phone", ""),
+            },
+        }
 
         if comment:
             data["comment"] = comment
 
+        endpoint = f"record/{self.company_id}/{record_id}"
         try:
             await self._make_request("PUT", endpoint, json=data)
             logger.info(f"Record {record_id} status updated to {status}")
+
             return True
         except YClientsAPIError as e:
             logger.error(f"Failed to update record {record_id} status: {str(e)}")

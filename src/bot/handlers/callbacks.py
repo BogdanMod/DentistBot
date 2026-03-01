@@ -62,7 +62,7 @@ async def handle_confirm_appointment(callback: CallbackQuery) -> None:
             "Пожалуйста, попробуйте позже или свяжитесь с админом."
         )
         
-@callback_router.callback_query(F.data.startswith("cancel_"))
+@callback_router.callback_query(F.data.startswith("cancel_") & ~ F.data.startswith("cancel_reason"))
 async def handle_cancel_appointment(callback: CallbackQuery) -> None:
     """Обработка отмены записи"""
     await callback.answer()

@@ -28,7 +28,7 @@ async def send_reminder_notification(bot: Bot, reminder: Reminder) -> bool:
         )
 
         from src.bot.keyboards.inline import create_reminder_keyboard
-        keyboard = create_reminder_keyboard(reminder.id)
+        keyboard = create_reminder_keyboard(reminder.record_id)
 
         await bot.send_message(
             chat_id=reminder.user_chat_id,
