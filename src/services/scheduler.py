@@ -107,8 +107,8 @@ class ReminderScheduler:
 
         self.scheduler.add_job(
             func=self.check_and_send_reminders,
-            # trigger=CronTrigger(minute=0),
-            trigger=IntervalTrigger(minutes=1),
+            trigger=CronTrigger(minute=0),
+            #trigger=IntervalTrigger(minutes=1),
             id="check_reminders",
             replace_existing=True,
         )
