@@ -1,11 +1,11 @@
 """Планировщик автоматических задач"""
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import settings
 from src.database.crud import ReminderCRUD, UserCRUD
@@ -23,25 +23,37 @@ class ReminderScheduler:
         self.bot = bot
         self.scheduler = AsyncIOScheduler()
 
+    @staticmethod
+    def _parse_reminder_time() -> tuple[int, int]:
+        """Парсит REMINDER_CHECK_TIME (формат HH:MM) в (hour, minute)."""
+        raw = settings.REMINDER_CHECK_TIME.strip()
+        if ":" in raw:
+            h, m = raw.split(":", 1)
+            return int(h.strip()), int(m.strip())
+        return 10, 0
+
     async def check_and_send_reminders(self) -> None:
         """
         Проверка и отправка напоминаний.
 
         Логика:
-        1. Получить все записи из YClients на следующие REMINDER_HOURS_BEFORE часов
+        1. Получить все записи из YClients на завтра (следующий календарный день в REMINDER_TIMEZONE)
         2. Для каждой записи найти зарегистрированного пользователя
         3. Создать reminder если ещё не создан
         4. Отправить если ещё не отправлен
         """
         logger.info("Starting reminder check...")
 
-        now = datetime.now(timezone.utc)
-        target_time = now + timedelta(hours=settings.REMINDER_HOURS_BEFORE)
+        tz = ZoneInfo(settings.REMINDER_TIMEZONE)
+        now = datetime.now(tz)
+        tomorrow = (now.date() + timedelta(days=1))
+        start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=tz)
+        end_date = start_date + timedelta(days=1) - timedelta(seconds=1)
 
         try:
             records = await yclients_client.get_records(
-                start_date=now,
-                end_date=target_time + timedelta(hours=1),
+                start_date=start_date,
+                end_date=end_date,
             )
             logger.info(f"Found {len(records)} records in YClients")
 
@@ -103,18 +115,22 @@ class ReminderScheduler:
         logger.info(f"Reminder check completed. Sent: {sent_count}, Skipped: {skipped_count}")
 
     def start(self) -> None:
-        """Запуск планировщика"""
+        """Запуск планировщика: раз в день в REMINDER_CHECK_TIME по REMINDER_TIMEZONE."""
+        hour, minute = self._parse_reminder_time()
 
         self.scheduler.add_job(
             func=self.check_and_send_reminders,
-            trigger=CronTrigger(minute=0),
-            #trigger=IntervalTrigger(minutes=1),
+            trigger=CronTrigger(
+                hour=hour,
+                minute=minute,
+                timezone=ZoneInfo(settings.REMINDER_TIMEZONE),
+            ),
             id="check_reminders",
             replace_existing=True,
         )
 
         logger.info(
-            f"Scheduler started. Will check reminders every hour at :00"
+            f"Scheduler started. Reminders at {hour:02d}:{minute:02d} ({settings.REMINDER_TIMEZONE}) for next-day appointments"
         )
 
         self.scheduler.start()

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     YCLIENTS_COMPANY_ID: int
     YCLIENTS_PARTNER_TOKEN: str
     YCLIENTS_USER_TOKEN: str
-    REMINDER_HOURS_BEFORE: int
-    REMINDER_CHECK_TIME: str
+    REMINDER_CHECK_TIME: str  # "HH:MM", например "10:00" — во сколько отправлять напоминания
+    REMINDER_TIMEZONE: str = "UTC"  # таймзона для "завтра" и времени запуска (например Europe/Moscow)
 
 
 
