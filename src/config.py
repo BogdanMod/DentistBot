@@ -1,4 +1,13 @@
+import logging
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_LOG_LEVEL_ALIASES = {
+    "ERRORS": "ERROR",
+    "WARN": "WARNING",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -10,6 +19,14 @@ class Settings(BaseSettings):
     TELEGRAM_TOKEN: str
     ADMIN_CHAT_ID: int
     LOG_LEVEL: str
+
+    @field_validator("LOG_LEVEL", mode="before")
+    @classmethod
+    def normalize_log_level(cls, v: str) -> str:
+        if not v:
+            return "INFO"
+        s = str(v).strip().upper()
+        return _LOG_LEVEL_ALIASES.get(s, s)
     DEBUG: bool
     DATABASE_URL: str
     YCLIENTS_API_URL: str = "https://api.yclients.com/api/v1"

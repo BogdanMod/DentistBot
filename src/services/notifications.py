@@ -19,9 +19,14 @@ async def send_reminder_notification(bot: Bot, reminder: Reminder) -> bool:
         True если успешно, False если ошибка
     """
     try:
+        appt = reminder.appointment_datetime
+        if appt.tzinfo is None:
+            from datetime import timezone as tz_module
+
+            appt = appt.replace(tzinfo=tz_module.utc)
         text = (
             f"Напоминание о записи\n\n"
-            f"Дата: {reminder.appointment_datetime.strftime('%d.%m.%Y %H:%M')}\n"
+            f"Дата: {appt.strftime('%d.%m.%Y %H:%M')}\n"
             f"Услуга: {reminder.service_name}\n"
             f"Мастер: {reminder.staff_name}\n\n"
             f"Подтвердите или отмените запись."

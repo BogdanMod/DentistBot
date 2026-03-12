@@ -115,7 +115,14 @@ class YClientsClient:
                     headers=headers,
                     **kwargs,
                 ) as response:
-                    data = await response.json()
+                    try:
+                        data = await response.json()
+                    except Exception:
+                        text = await response.text()
+                        logger.error(
+                            f"YClients non-JSON response status={response.status} body={text[:500]}"
+                        )
+                        raise YClientsAPIError(f"Invalid JSON response HTTP {response.status}")
 
                     if response.status == 429:
                         raise YClientsRateLimitError("Too many requests")
@@ -207,6 +214,23 @@ class YClientsClient:
             logger.error(f"Cannot update record {record_id}: record not found")
             return False
 
+        staff = record.get("staff") or {}
+        client = record.get("client") or {}
+        staff_id = staff.get("id") if isinstance(staff, dict) else None
+        client_id = client.get("id") if isinstance(client, dict) else None
+        if staff_id is None or client_id is None:
+            logger.error(
+                f"Cannot update record {record_id}: missing staff_id or client in record"
+            )
+            return False
+
+        services_payload = []
+        for s in record.get("services") or []:
+            if isinstance(s, dict) and s.get("id") is not None:
+                services_payload.append(
+                    {"id": s["id"], "amount": s.get("amount", 1)}
+                )
+
         attendance = 0
         if status == "confirmed":
             attendance = 1
@@ -214,17 +238,20 @@ class YClientsClient:
             attendance = -1
 
         data: dict[str, Any] = {
-            "datetime": record["datetime"],
-            "seance_length": record["seance_length"],
+            "datetime": record.get("datetime"),
+            "seance_length": record.get("seance_length"),
             "attendance": attendance,
-            "staff_id": record["staff"]["id"],
-            "services": [{"id": s["id"], "amount": s.get("amount", 1)} for s in record.get("services", [])],
+            "staff_id": staff_id,
+            "services": services_payload,
             "client": {
-                "id": record["client"]["id"],
-                "name": record["client"].get("name", ""),
-                "phone": record["client"].get("phone", ""),
+                "id": client_id,
+                "name": client.get("name", "") if isinstance(client, dict) else "",
+                "phone": client.get("phone", "") if isinstance(client, dict) else "",
             },
         }
+        if data["datetime"] is None:
+            logger.error(f"Cannot update record {record_id}: missing datetime")
+            return False
 
         if comment:
             data["comment"] = comment

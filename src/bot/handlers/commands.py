@@ -48,6 +48,9 @@ async def start_command(message: Message) -> None:
 async def contact_handler(message: Message, dialog_manager: DialogManager) -> None:
     """Обработчик полученного контакта"""
     contact = message.contact
+    if contact is None or not contact.phone_number:
+        await message.answer("Не удалось получить номер. Попробуйте ещё раз.")
+        return
     phone = contact.phone_number
 
     # Нормализация номера
@@ -64,6 +67,12 @@ async def contact_handler(message: Message, dialog_manager: DialogManager) -> No
         client_data = await yclients_client.find_client(phone=digits)
 
     if client_data:
+        if client_data.get("id") is None:
+            await message.answer(
+                "Клиент найден, но без ID в системе. Свяжитесь с администратором.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
         await dialog_manager.start(
             state=RegistrationStates.waiting_for_confirmation,
             mode=StartMode.RESET_STACK,

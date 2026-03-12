@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models import User, Reminder, RescheduleRequest, NotificationLog
 
@@ -40,9 +42,25 @@ class UserCRUD:
             is_registered=True,
         )
         session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user
+        try:
+            await session.commit()
+            await session.refresh(user)
+            return user
+        except IntegrityError:
+            await session.rollback()
+            # Повторная регистрация с тем же телефоном — вернуть существующего
+            existing = await UserCRUD.get_by_phone(session, phone)
+            if existing:
+                existing.chat_id = chat_id
+                existing.full_name = full_name or existing.full_name
+                existing.email = email or existing.email
+                if yclients_client_id is not None:
+                    existing.yclients_client_id = yclients_client_id
+                existing.is_registered = True
+                await session.commit()
+                await session.refresh(existing)
+                return existing
+            raise
     
     @staticmethod
     async def get_by_yclients_client_id(
@@ -95,7 +113,10 @@ class ReminderCRUD:
         await session.execute(
             update(Reminder)
             .where(Reminder.record_id == record_id)
-            .values(is_sent=True, reminder_sent_at=datetime.utcnow())
+            .values(
+                is_sent=True,
+                reminder_sent_at=datetime.now(timezone.utc),
+            )
         )
         await session.commit()
         
@@ -177,7 +198,7 @@ class RescheduleRequestCRUD:
             .where(RescheduleRequest.id == request_id)
             .values(
                 status="processed",
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(timezone.utc),
                 manager_comment=manager_comment,
             )
         )

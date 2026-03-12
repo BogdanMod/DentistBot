@@ -17,8 +17,9 @@ from src.services.scheduler import ReminderScheduler
 
 from src.services.yclients import yclients_client
 
+_log_level = getattr(logging, settings.LOG_LEVEL, logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=_log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)

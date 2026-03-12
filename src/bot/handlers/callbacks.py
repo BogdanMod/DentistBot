@@ -2,6 +2,7 @@
 import logging
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from src.bot.keyboards.inline import create_cancel_reason_keyboard
@@ -20,13 +21,45 @@ logger = logging.getLogger(__name__)
 callback_router = Router()
 
 
+def _safe_record_id(callback_data: str, prefix: str) -> int | None:
+    """Извлекает record_id из callback_data вида prefix_{id} или prefix_{id}_..."""
+    if not callback_data or not callback_data.startswith(prefix):
+        return None
+    rest = callback_data[len(prefix) :].lstrip("_")
+    if not rest:
+        return None
+    first = rest.split("_")[0]
+    try:
+        return int(first)
+    except ValueError:
+        return None
+
+
+async def _safe_edit_message(callback: CallbackQuery, text: str, **kwargs) -> None:
+    """edit_text без падения, если сообщение уже изменено/удалено."""
+    if callback.message is None:
+        return
+    try:
+        await callback.message.edit_text(text, **kwargs)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            return
+        logger.warning(f"edit_text skipped: {e}")
+        try:
+            await callback.message.answer(text)
+        except Exception:
+            pass
+
+
 @callback_router.callback_query(F.data.startswith("confirm_"))
 async def handle_confirm_appointment(callback: CallbackQuery) -> None:
     """Обработка подтверждения записи"""
     await callback.answer()
 
-    # Извлекаем record_id из callback_data
-    record_id = int(callback.data.split("_")[1])
+    record_id = _safe_record_id(callback.data, "confirm")
+    if record_id is None:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
 
     # Обновляем статус в YClients
     success = await yclients_client.update_record_status(
@@ -49,10 +82,12 @@ async def handle_confirm_appointment(callback: CallbackQuery) -> None:
                 is_successful=True,
             )
 
-        await callback.message.edit_text(
-            f"{callback.message.text}\n\n"
+        base = callback.message.text if callback.message else ""
+        await _safe_edit_message(
+            callback,
+            f"{base}\n\n"
             "✅ Запись подтверждена!\n"
-            "Ждем вас в назначенное время. 😊"
+            "Ждем вас в назначенное время. 😊",
         )
 
         logger.info(f"Record {record_id} confirmed by user {callback.from_user.id}")
@@ -67,11 +102,16 @@ async def handle_cancel_appointment(callback: CallbackQuery) -> None:
     """Обработка отмены записи"""
     await callback.answer()
 
-    record_id = int(callback.data.split("_")[1])
+    record_id = _safe_record_id(callback.data, "cancel")
+    if record_id is None:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
 
     # Показываем клавиатуру с причинами отмены
-    await callback.message.edit_text(
-        f"{callback.message.text}\n\n"
+    base = callback.message.text if callback.message else ""
+    await _safe_edit_message(
+        callback,
+        f"{base}\n\n"
         "Пожалуйста, укажите причину отмены:",
         reply_markup=create_cancel_reason_keyboard(record_id),
     )
@@ -84,7 +124,14 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
 
     # Парсим callback_data: cancel_reason_{record_id}_{reason}
     parts = callback.data.split("_")
-    record_id = int(parts[2])
+    if len(parts) < 4:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
+    try:
+        record_id = int(parts[2])
+    except ValueError:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
     reason = "_".join(parts[3:])
 
     # Словарь причин
@@ -117,11 +164,15 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
                 is_successful=True,
             )
 
-        await callback.message.edit_text(
-            f"{callback.message.text.split('Пожалуйста')[0]}\n"
+        base = ""
+        if callback.message and callback.message.text:
+            base = callback.message.text.split("Пожалуйста")[0]
+        await _safe_edit_message(
+            callback,
+            f"{base}\n"
             "❌ Запись отменена.\n\n"
             f"Причина: {reason_text}\n\n"
-            "Для новой записи свяжитесь с салоном."
+            "Для новой записи свяжитесь с салоном.",
         )
 
         logger.info(
@@ -139,7 +190,10 @@ async def handle_reschedule_appointment(callback: CallbackQuery) -> None:
     """Обработка переноса записи"""
     await callback.answer()
 
-    record_id = int(callback.data.split("_")[1])
+    record_id = _safe_record_id(callback.data, "reschedule")
+    if record_id is None:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
 
     # Получаем данные пользователя и записи
     async for session in db_manager.get_session():
@@ -159,11 +213,13 @@ async def handle_reschedule_appointment(callback: CallbackQuery) -> None:
             )
 
             # Уведомляем клиента
-            await callback.message.edit_text(
-                f"{callback.message.text}\n\n"
+            base = callback.message.text if callback.message else ""
+            await _safe_edit_message(
+                callback,
+                f"{base}\n\n"
                 "🔄 Запрос на перенос отправлен!\n\n"
                 "Менеджер салона свяжется с вами в ближайшее время "
-                "для уточнения новой даты и времени."
+                "для уточнения новой даты и времени.",
             )
 
             # Уведомляем администратора
