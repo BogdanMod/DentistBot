@@ -12,6 +12,7 @@ from aiogram.types import (
 from aiogram_dialog import DialogManager, StartMode
 
 from src.bot.dialogs.states import RegistrationStates
+from src.config import settings
 from src.database.crud import UserCRUD
 from src.database.database import db_manager
 from src.services.yclients import yclients_client
@@ -84,9 +85,11 @@ async def contact_handler(message: Message, dialog_manager: DialogManager) -> No
             },
         )
     else:
+        contact = getattr(settings, "RESCHEDULE_CONTACT", "") or "@Shevtsova_team"
         await message.answer(
-            "Не удалось найти вас в системе.\n"
-            "Свяжитесь с администратором салона.",
+            "Не удалось найти вас в системе.\n\n"
+            "Администратор свяжется с Вами для новой записи.\n"
+            f"{contact}",
             reply_markup=ReplyKeyboardRemove(),
         )
 

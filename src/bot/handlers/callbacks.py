@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 
 callback_router = Router()
 
+# Единый контакт и формулировки для клиента
+def _admin_contact() -> str:
+    return getattr(settings, "RESCHEDULE_CONTACT", "") or "@Shevtsova_team"
+
+MSG_NEW_RECORD = (
+    "Администратор свяжется с Вами для новой записи.\n"
+)
+MSG_RESCHEDULE = (
+    "Администратор свяжется с Вами для переноса записи.\n"
+)
+
 
 def _safe_record_id(callback_data: str, prefix: str) -> int | None:
     """Извлекает record_id из callback_data вида prefix_{id} или prefix_{id}_..."""
@@ -94,7 +105,8 @@ async def handle_confirm_appointment(callback: CallbackQuery) -> None:
     else:
         await callback.message.answer(
             "❌ Не удалось подтвердить запись. "
-            "Пожалуйста, попробуйте позже или свяжитесь с админом."
+            "Пожалуйста, попробуйте позже.\n\n"
+            f"{MSG_NEW_RECORD}{_admin_contact()}"
         )
         
 @callback_router.callback_query(F.data.startswith("cancel_") & ~ F.data.startswith("cancel_reason"))
@@ -172,7 +184,7 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
             f"{base}\n"
             "❌ Запись отменена.\n\n"
             f"Причина: {reason_text}\n\n"
-            "Для новой записи свяжитесь с салоном.",
+            f"{MSG_NEW_RECORD}{_admin_contact()}",
         )
 
         logger.info(
@@ -182,7 +194,8 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
     else:
         await callback.message.answer(
             "❌ Не удалось отменить запись. "
-            "Пожалуйста, попробуйте позже или свяжитесь с салоном."
+            "Пожалуйста, попробуйте позже.\n\n"
+            f"{MSG_NEW_RECORD}{_admin_contact()}"
         )
         
 @callback_router.callback_query(F.data.startswith("reschedule_"))
@@ -212,16 +225,12 @@ async def handle_reschedule_appointment(callback: CallbackQuery) -> None:
                 service_name=reminder.service_name,
             )
 
-            # Уведомляем клиента
-            from src.config import settings as app_settings
-
-            contact = getattr(app_settings, "RESCHEDULE_CONTACT", "") or "@Shevtsova_team"
+            # Уведомляем клиента (именно для переноса записи)
             base = callback.message.text if callback.message else ""
             await _safe_edit_message(
                 callback,
                 f"{base}\n\n"
-                "🔄 Администратор свяжется с Вами для новой записи.\n"
-                f"{contact}",
+                f"🔄 {MSG_RESCHEDULE}{_admin_contact()}",
             )
 
             # Уведомляем администратора
