@@ -28,12 +28,15 @@ def _reminder_text(reminder: Reminder) -> str:
         appt = appt.replace(tzinfo=tz_module.utc)
     date_str = appt.strftime("%d.%m.%Y в %H:%M")
     signature = getattr(settings, "REMINDER_SIGNATURE", None) or "команда доктора Шевцовой🦷"
+    doctor_name = (reminder.staff_name or "Доктор").strip()
+    if doctor_name.lower() == "мастер":
+        doctor_name = "Доктор"
 
     return (
         "✋ Добрый день!\n\n"
         "📆 Напоминаем о записи.\n"
         f"{date_str}.\n"
-        f"Доктор: {reminder.staff_name}.\n"
+        f"Доктор: {doctor_name}.\n"
         f"{CLINIC_BLOCK}\n\n"
         "Подтверждаете запись?\n\n"
         f"С уважением,\n{signature}"

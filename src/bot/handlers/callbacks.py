@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 callback_router = Router()
 
-# Единый контакт и формулировки для клиента
+# Единый контакт и формулировки для пациента
 def _admin_contact() -> str:
     return getattr(settings, "RESCHEDULE_CONTACT", "") or "@Shevtsova_team"
 
@@ -76,7 +76,7 @@ async def handle_confirm_appointment(callback: CallbackQuery) -> None:
     success = await yclients_client.update_record_status(
         record_id=record_id,
         status="confirmed",
-        comment="Подтверждено клиентом через Telegram бота",
+        comment="Подтверждено пациентом через Telegram бота",
     )
 
     if success:
@@ -159,7 +159,7 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
     success = await yclients_client.update_record_status(
         record_id=record_id,
         status="deleted",
-        comment=f"Отменено клиентом: {reason_text}",
+        comment=f"Отменено пациентом: {reason_text}",
     )
 
     if success:
@@ -234,15 +234,17 @@ async def handle_reschedule_appointment(callback: CallbackQuery) -> None:
             )
 
             # Уведомляем администратора
+            doctor_name = (reminder.staff_name or "Доктор").strip()
+            if doctor_name.lower() == "мастер":
+                doctor_name = "Доктор"
             admin_message = (
                 "🔔 Новый запрос на перенос записи\n\n"
                 f"📋 ID записи: {record_id}\n"
-                f"👤 Клиент: {user.full_name}\n"
+                f"👤 Пациент: {user.full_name}\n"
                 f"📞 Телефон: {user.phone}\n"
-                f"💇‍♀️ Услуга: {reminder.service_name}\n"
-                f"👩 Мастер: {reminder.staff_name}\n"
+                f"Доктор: {doctor_name}\n"
                 f"📅 Текущая дата: {reminder.appointment_datetime.strftime('%d.%m.%Y %H:%M')}\n\n"
-                "Пожалуйста, свяжитесь с клиентом для уточнения новой даты."
+                "Пожалуйста, свяжитесь с пациентом для уточнения новой даты."
             )
 
             try:

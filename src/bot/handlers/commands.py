@@ -70,7 +70,7 @@ async def contact_handler(message: Message, dialog_manager: DialogManager) -> No
     if client_data:
         if client_data.get("id") is None:
             await message.answer(
-                "Клиент найден, но без ID в системе. Свяжитесь с администратором.",
+                "Пациент найден, но без ID в системе. Свяжитесь с администратором.",
                 reply_markup=ReplyKeyboardRemove(),
             )
             return

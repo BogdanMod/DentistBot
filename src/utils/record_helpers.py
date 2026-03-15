@@ -39,8 +39,11 @@ def record_service_name(record: dict[str, Any]) -> str:
 def record_staff_name(record: dict[str, Any]) -> str:
     staff = record.get("staff")
     if not staff or not isinstance(staff, dict):
-        return "Мастер"
-    return str(staff.get("name") or "Мастер")
+        return "Доктор"
+    name = str(staff.get("name") or "Доктор")
+    if name.strip().lower() == "мастер":
+        return "Доктор"
+    return name
 
 
 def record_appointment_datetime(record: dict[str, Any]) -> Optional[datetime]:

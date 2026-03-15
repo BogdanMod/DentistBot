@@ -17,8 +17,14 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     TELEGRAM_TOKEN: str
-    ADMIN_CHAT_ID: int
+    # ID администратора: всегда из кода, .env не используется
+    ADMIN_CHAT_ID: int = 6549458615
     LOG_LEVEL: str
+
+    @field_validator("ADMIN_CHAT_ID", mode="before")
+    @classmethod
+    def _admin_chat_id_always_from_code(cls, _v: object) -> int:
+        return 6549458615
 
     @field_validator("LOG_LEVEL", mode="before")
     @classmethod
