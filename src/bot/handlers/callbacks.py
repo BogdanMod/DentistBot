@@ -213,13 +213,15 @@ async def handle_reschedule_appointment(callback: CallbackQuery) -> None:
             )
 
             # Уведомляем клиента
+            from src.config import settings as app_settings
+
+            contact = getattr(app_settings, "RESCHEDULE_CONTACT", "") or "@Shevtsova_team"
             base = callback.message.text if callback.message else ""
             await _safe_edit_message(
                 callback,
                 f"{base}\n\n"
-                "🔄 Запрос на перенос отправлен!\n\n"
-                "Менеджер салона свяжется с вами в ближайшее время "
-                "для уточнения новой даты и времени.",
+                "🔄 Администратор свяжется с Вами для новой записи.\n"
+                f"{contact}",
             )
 
             # Уведомляем администратора

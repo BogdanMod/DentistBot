@@ -4,11 +4,40 @@ import logging
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
+from src.config import settings
 from src.database.crud import NotificationLogCRUD, ReminderCRUD
 from src.database.database import db_manager
 from src.database.models import Reminder
 
 logger = logging.getLogger(__name__)
+
+
+# Адрес клиники всегда один и тот же
+CLINIC_BLOCK = (
+    "📍Клиника «Лотос»\n"
+    "БЦ Останкино, Огородный проезд, дом 16/1, корпус 3, этаж 11."
+)
+
+
+def _reminder_text(reminder: Reminder) -> str:
+    """Текст напоминания о записи по шаблону."""
+    appt = reminder.appointment_datetime
+    if appt.tzinfo is None:
+        from datetime import timezone as tz_module
+
+        appt = appt.replace(tzinfo=tz_module.utc)
+    date_str = appt.strftime("%d.%m.%Y в %H:%M")
+    signature = getattr(settings, "REMINDER_SIGNATURE", None) or "команда доктора Шевцовой🦷"
+
+    return (
+        "✋ Добрый день!\n\n"
+        "📆 Напоминаем о записи.\n"
+        f"{date_str}.\n"
+        f"Доктор: {reminder.staff_name}.\n"
+        f"{CLINIC_BLOCK}\n\n"
+        "Подтверждаете запись?\n\n"
+        f"С уважением,\n{signature}"
+    )
 
 
 async def send_reminder_notification(bot: Bot, reminder: Reminder) -> bool:
@@ -19,18 +48,7 @@ async def send_reminder_notification(bot: Bot, reminder: Reminder) -> bool:
         True если успешно, False если ошибка
     """
     try:
-        appt = reminder.appointment_datetime
-        if appt.tzinfo is None:
-            from datetime import timezone as tz_module
-
-            appt = appt.replace(tzinfo=tz_module.utc)
-        text = (
-            f"Напоминание о записи\n\n"
-            f"Дата: {appt.strftime('%d.%m.%Y %H:%M')}\n"
-            f"Услуга: {reminder.service_name}\n"
-            f"Мастер: {reminder.staff_name}\n\n"
-            f"Подтвердите или отмените запись."
-        )
+        text = _reminder_text(reminder)
 
         from src.bot.keyboards.inline import create_reminder_keyboard
         keyboard = create_reminder_keyboard(reminder.record_id)

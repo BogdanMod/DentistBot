@@ -1,8 +1,12 @@
+import asyncio
+import logging
 from typing import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from src.config import settings
 from src.database.models import Base
 
+logger = logging.getLogger(__name__)
 
 #Класс DatabaseManager
 
@@ -22,8 +26,22 @@ class DatabaseManager:
         )
     
     async def init_db(self) -> None:
-        async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # Postgres в Docker может подняться чуть позже бота — несколько попыток
+        last_error: Exception | None = None
+        for attempt in range(1, 11):
+            try:
+                async with self.engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+                return
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "init_db attempt %s/10 failed: %s", attempt, e
+                )
+                await asyncio.sleep(2)
+        if last_error:
+            raise last_error
+        raise RuntimeError("init_db failed without exception")
     
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
         async with self.async_session_maker() as session:
