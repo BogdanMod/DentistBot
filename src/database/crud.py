@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import desc
 from src.database.models import User, Reminder, RescheduleRequest, NotificationLog
 
 
@@ -188,6 +189,19 @@ class RescheduleRequestCRUD:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_latest_by_record_id(
+        session: AsyncSession,
+        record_id: int,
+    ) -> Optional[RescheduleRequest]:
+        result = await session.execute(
+            select(RescheduleRequest)
+            .where(RescheduleRequest.record_id == record_id)
+            .order_by(desc(RescheduleRequest.created_at))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def mark_as_processed(
         session: AsyncSession,
         request_id: int,
@@ -228,3 +242,20 @@ class NotificationLogCRUD:
         await session.commit()
         await session.refresh(log_entry)
         return log_entry
+
+    @staticmethod
+    async def get_latest_by_record_and_type(
+        session: AsyncSession,
+        record_id: int,
+        message_type: str,
+    ) -> Optional[NotificationLog]:
+        result = await session.execute(
+            select(NotificationLog)
+            .where(
+                NotificationLog.record_id == record_id,
+                NotificationLog.message_type == message_type,
+            )
+            .order_by(desc(NotificationLog.sent_at))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

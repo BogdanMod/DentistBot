@@ -11,6 +11,7 @@ from src.config import settings
 from src.database.crud import ReminderCRUD, UserCRUD
 from src.database.database import db_manager
 from src.services.notifications import send_reminder_notification
+from src.services.admin_report import send_admin_report_for_date
 from src.services.yclients import yclients_client
 from src.utils.record_helpers import (
     record_appointment_datetime,
@@ -190,6 +191,11 @@ class ReminderScheduler:
         async def _run() -> None:
             await self.check_and_send_reminders()
 
+        async def _admin_report() -> None:
+            now = datetime.now(tz)
+            target = (now.date() + timedelta(days=1))
+            await send_admin_report_for_date(self.bot, target)
+
         self.scheduler.add_job(
             _run,
             trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
@@ -200,11 +206,32 @@ class ReminderScheduler:
             coalesce=True,
         )
 
+        # Отчёт админу чуть позже рассылки (по умолчанию +5 минут)
+        report_hour = hour
+        report_minute = minute + 5
+        if report_minute >= 60:
+            report_minute -= 60
+            report_hour = (report_hour + 1) % 24
+
+        self.scheduler.add_job(
+            _admin_report,
+            trigger=CronTrigger(hour=report_hour, minute=report_minute, timezone=tz),
+            id="admin_report",
+            replace_existing=True,
+            misfire_grace_time=86400,
+            coalesce=True,
+        )
+
         self.scheduler.start()
         job = self.scheduler.get_job("check_reminders")
+        report_job = self.scheduler.get_job("admin_report")
         logger.info(
             f"Scheduler started. Reminders daily at {hour:02d}:{minute:02d} {settings.REMINDER_TIMEZONE}, "
             f"next_run={getattr(job, 'next_run_time', None)}"
+        )
+        logger.info(
+            f"Admin report daily at {report_hour:02d}:{report_minute:02d} {settings.REMINDER_TIMEZONE}, "
+            f"next_run={getattr(report_job, 'next_run_time', None)}"
         )
 
     def shutdown(self) -> None:

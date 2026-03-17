@@ -1,5 +1,7 @@
 """Обработчики команд"""
 import logging
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
@@ -15,6 +17,7 @@ from src.bot.dialogs.states import RegistrationStates
 from src.config import settings
 from src.database.crud import UserCRUD
 from src.database.database import db_manager
+from src.services.admin_report import send_admin_report_for_date
 from src.services.yclients import yclients_client
 
 logger = logging.getLogger(__name__)
@@ -105,3 +108,35 @@ async def today_command(message: Message) -> None:
         return
 
     await message.answer("Функция в разработке.")
+
+
+@commands_router.message(F.text.startswith("/report"))
+async def report_command(message: Message) -> None:
+    """Админ-команда отчёта: /report [tomorrow|today|YYYY-MM-DD]"""
+    if message.from_user.id != settings.ADMIN_CHAT_ID:
+        return
+
+    raw = (message.text or "").strip()
+    parts = raw.split(maxsplit=1)
+    arg = parts[1].strip() if len(parts) > 1 else "tomorrow"
+
+    try:
+        tz = ZoneInfo(settings.REMINDER_TIMEZONE or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+
+    today = datetime.now(tz).date()
+    target: date
+    if arg.lower() in {"tomorrow", "завтра"}:
+        target = today + timedelta(days=1)
+    elif arg.lower() in {"today", "сегодня"}:
+        target = today
+    else:
+        try:
+            target = date.fromisoformat(arg)
+        except ValueError:
+            await message.answer("Формат: /report tomorrow | today | YYYY-MM-DD")
+            return
+
+    await message.answer(f"Готовлю отчёт на {target.strftime('%d.%m.%Y')}…")
+    await send_admin_report_for_date(message.bot, target)
