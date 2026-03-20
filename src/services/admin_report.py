@@ -4,6 +4,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from src.config import settings
 from src.database.crud import NotificationLogCRUD, ReminderCRUD, RescheduleRequestCRUD, UserCRUD
@@ -218,5 +219,19 @@ async def send_admin_report_for_date(bot: Bot, target: date) -> None:
     text = header + body
 
     for part in _chunks(text):
-        await bot.send_message(chat_id=settings.ADMIN_CHAT_ID, text=part)
+        try:
+            await bot.send_message(chat_id=settings.ADMIN_CHAT_ID, text=part)
+        except TelegramForbiddenError:
+            logger.error(
+                "Cannot deliver admin report: admin blocked bot or never started chat. admin_id=%s",
+                settings.ADMIN_CHAT_ID,
+            )
+            return
+        except TelegramBadRequest as e:
+            logger.error(
+                "Cannot deliver admin report (bad request). admin_id=%s error=%s",
+                settings.ADMIN_CHAT_ID,
+                e,
+            )
+            return
 

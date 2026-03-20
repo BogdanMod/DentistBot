@@ -190,11 +190,12 @@ class ReminderScheduler:
         # Отдельная async-функция вместо bound method — надёжнее с AsyncIOExecutor
         async def _run() -> None:
             await self.check_and_send_reminders()
-
-        async def _admin_report() -> None:
-            now = datetime.now(tz)
-            target = (now.date() + timedelta(days=1))
-            await send_admin_report_for_date(self.bot, target)
+            try:
+                # Отчёт отправляем в том же ежедневном цикле, чтобы не потерять отдельную джобу.
+                target = datetime.now(tz).date() + timedelta(days=1)
+                await send_admin_report_for_date(self.bot, target)
+            except Exception as e:
+                logger.error("Failed to send daily admin report: %s", e, exc_info=True)
 
         self.scheduler.add_job(
             _run,
@@ -206,33 +207,13 @@ class ReminderScheduler:
             coalesce=True,
         )
 
-        # Отчёт админу чуть позже рассылки (по умолчанию +5 минут)
-        report_hour = hour
-        report_minute = minute + 5
-        if report_minute >= 60:
-            report_minute -= 60
-            report_hour = (report_hour + 1) % 24
-
-        self.scheduler.add_job(
-            _admin_report,
-            trigger=CronTrigger(hour=report_hour, minute=report_minute, timezone=tz),
-            id="admin_report",
-            replace_existing=True,
-            misfire_grace_time=86400,
-            coalesce=True,
-        )
-
         self.scheduler.start()
         job = self.scheduler.get_job("check_reminders")
-        report_job = self.scheduler.get_job("admin_report")
         logger.info(
             f"Scheduler started. Reminders daily at {hour:02d}:{minute:02d} {settings.REMINDER_TIMEZONE}, "
             f"next_run={getattr(job, 'next_run_time', None)}"
         )
-        logger.info(
-            f"Admin report daily at {report_hour:02d}:{report_minute:02d} {settings.REMINDER_TIMEZONE}, "
-            f"next_run={getattr(report_job, 'next_run_time', None)}"
-        )
+        logger.info("Admin report is sent right after daily reminders run")
 
     def shutdown(self) -> None:
         """Остановка планировщика"""

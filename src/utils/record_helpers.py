@@ -56,7 +56,8 @@ def record_appointment_datetime(record: dict[str, Any]) -> Optional[datetime]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         else:
-            dt = dt.astimezone(timezone.utc).astimezone()
+            # Всегда нормализуем к UTC и не переводим в локаль контейнера
+            dt = dt.astimezone(timezone.utc)
         return dt
     except (ValueError, TypeError):
         return None

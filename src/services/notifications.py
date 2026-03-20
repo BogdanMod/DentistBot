@@ -1,5 +1,6 @@
 """Сервис отправки уведомлений"""
 import logging
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
@@ -26,6 +27,11 @@ def _reminder_text(reminder: Reminder) -> str:
         from datetime import timezone as tz_module
 
         appt = appt.replace(tzinfo=tz_module.utc)
+    try:
+        tz = ZoneInfo(settings.REMINDER_TIMEZONE or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    appt = appt.astimezone(tz)
     date_str = appt.strftime("%d.%m.%Y в %H:%M")
     signature = getattr(settings, "REMINDER_SIGNATURE", None) or "команда доктора Шевцовой🦷"
     doctor_name = (reminder.staff_name or "Доктор").strip()
