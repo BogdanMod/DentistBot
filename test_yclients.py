@@ -1,101 +1,81 @@
 import asyncio
-import logging
 from datetime import datetime, timedelta
 
-from src.services.yclients import YClientsClient, YClientsAPIError
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from src.services.yclients import YClientsClient
 
 
-async def test_client_init():
-    """Тест инициализации клиента"""
+async def test_client_init() -> None:
     client = YClientsClient()
-
-    print(f"Base URL: {client.base_url}")
-    print(f"Company ID: {client.company_id}")
-    print(f"Session: {client._session}")
-    print(f"Max requests/min: {client._max_requests_per_minute}")
-
-    assert client.base_url is not None
-    assert client.company_id is not None
-    print("PASS: client init")
-
+    assert client.base_url.startswith("https://")
+    assert client.branch_id >= 1
     await client.close()
 
 
-async def test_headers():
-    """Тест генерации заголовков"""
+async def test_rate_limit_tracking() -> None:
     client = YClientsClient()
-    headers = client._get_headers()
-
-    print(f"Headers: {headers}")
-
-    assert "Authorization" in headers
-    assert "Bearer" in headers["Authorization"]
-    assert "User" in headers["Authorization"]
-    assert headers["Accept"] == "application/vnd.api.v2+json"
-    print("PASS: headers")
-
-    await client.close()
-
-
-async def test_rate_limit():
-    """Тест rate limiting"""
-    client = YClientsClient()
-    client._max_requests_per_minute = 5  # Снижаем для теста
-
-    # Добавляем 5 запросов
-    for i in range(5):
+    client._max_requests_per_minute = 5
+    for _ in range(5):
         await client._check_rate_limit()
-
-    print(f"Recorded requests: {len(client._request_times)}")
     assert len(client._request_times) == 5
-    print("PASS: rate limit tracking")
-
     await client.close()
 
 
-async def test_api_connection():
-    """Тест подключения к реальному API (нужны токены)"""
+async def test_get_records_mapping() -> None:
     client = YClientsClient()
 
-    try:
-        today = datetime.now()
-        tomorrow = today + timedelta(days=1)
-        records = await client.get_records(
-            start_date=today,
-            end_date=tomorrow,
-        )
-        print(f"Records found: {len(records)}")
-        if records:
-            print(f"First record keys: {records[0].keys()}")
-        print("PASS: api connection")
+    async def fake_collect_paginated(endpoint: str, params: dict):
+        assert endpoint == "/visits"
+        assert params["branch_id"] == client.branch_id
+        return [
+            {
+                "id": 123,
+                "start": "2026-04-12 10:30:00",
+                "patient": {"id": 10, "fname": "Иван", "lname": "Иванов", "phone": "+79991234567"},
+                "doctor": {"id": 3, "fname": "Анна", "lname": "Петрова"},
+                "is_cancelled": False,
+            }
+        ]
 
-    except YClientsAPIError as e:
-        print(f"API Error (expected if no tokens): {e}")
+    client._collect_paginated = fake_collect_paginated  # type: ignore[method-assign]
 
-    except Exception as e:
-        print(f"Error: {e}")
+    now = datetime.now()
+    records = await client.get_records(now, now + timedelta(days=1))
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["id"] == 123
+    assert rec["client"]["id"] == 10
+    assert rec["staff"]["id"] == 3
+    assert rec["datetime"].startswith("2026-04-12T10:30:00")
+    await client.close()
 
-    finally:
-        await client.close()
+
+async def test_find_client_match_by_phone() -> None:
+    client = YClientsClient()
+
+    async def fake_make_request(method: str, endpoint: str, **kwargs):
+        assert method == "GET"
+        assert endpoint == "/patients"
+        return {
+            "data": [
+                {"id": 1, "fname": "Петр", "lname": "Сидоров", "phone": "+79990000001", "email": "a@a.com"},
+                {"id": 2, "fname": "Иван", "lname": "Иванов", "phone": "+79991234567", "email": "b@b.com"},
+            ]
+        }
+
+    client._make_request = fake_make_request  # type: ignore[method-assign]
+    found = await client.find_client(phone="+7 (999) 123-45-67")
+    assert found is not None
+    assert found["id"] == 2
+    assert "Иванов" in found["name"]
+    await client.close()
 
 
-async def main():
-    print("=== Test 1: Client Init ===")
+async def main() -> None:
     await test_client_init()
-
-    print("\n=== Test 2: Headers ===")
-    await test_headers()
-
-    print("\n=== Test 3: Rate Limit ===")
-    await test_rate_limit()
-
-    print("\n=== Test 4: API Connection ===")
-    await test_api_connection()
-
-    print("\n=== All tests completed ===")
+    await test_rate_limit_tracking()
+    await test_get_records_mapping()
+    await test_find_client_match_by_phone()
+    print("PASS: Dentist Plus client tests")
 
 
 if __name__ == "__main__":

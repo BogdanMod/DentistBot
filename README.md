@@ -1,6 +1,6 @@
-# YClients Dentist Bot
+# Dentist Bot
 
-Бот для напоминаний и управления записями в YClients через Telegram.
+Бот для напоминаний и управления записями в Dentist Plus через Telegram.
 Помогает администратору и клиентам получать актуальный статус записи и уведомления.
 
 ## Технологии
@@ -28,9 +28,12 @@ uv sync
 3) Создание `.env`:
 ```
 TELEGRAM_TOKEN=your_telegram_bot_token
-ADMIN_ID=your_admin_id
+ADMIN_CHAT_ID=your_admin_id
 LOG_LEVEL=INFO
 DEBUG=false
+DENTIST_PLUS_LOGIN=api_login
+DENTIST_PLUS_PASSWORD=api_password
+DENTIST_PLUS_BRANCH_ID=1
 ```
 
 4) Запуск:
@@ -43,5 +46,5 @@ python3 -m src.bot.main
 - В `.env` задайте `REMINDER_CHECK_TIME=10:00` и **`REMINDER_TIMEZONE=Europe/Moscow`** (или вашу таймзону), иначе 10:00 будет по UTC.
 - После правок **Docker-образ нужно пересобрать** (`docker compose build --no-cache`), в образе должен быть пакет `tzdata` (уже в `dockerfile`), иначе `Europe/Moscow` в контейнере может работать некорректно.
 - В логах при старте смотрите строку `next_run=...` — если `None`, джоба не поставилась.
-- Если в 10:00 пришло `records_count=0` — в YClients нет записей на **завтра** (в выбранной таймзоне).
+- Если в 10:00 пришло `records_count=0` — в Dentist Plus нет записей на **завтра** (в выбранной таймзоне).
 - Если много `Skip record ... no bot user` — клиент не зарегистрирован в боте или не совпал `yclients_client_id`.

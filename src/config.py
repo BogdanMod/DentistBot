@@ -35,10 +35,10 @@ class Settings(BaseSettings):
         return _LOG_LEVEL_ALIASES.get(s, s)
     DEBUG: bool
     DATABASE_URL: str
-    YCLIENTS_API_URL: str = "https://api.yclients.com/api/v1"
-    YCLIENTS_COMPANY_ID: int
-    YCLIENTS_PARTNER_TOKEN: str
-    YCLIENTS_USER_TOKEN: str
+    DENTIST_PLUS_API_URL: str = "https://api2.dentist-plus.com/partner"
+    DENTIST_PLUS_LOGIN: str = ""
+    DENTIST_PLUS_PASSWORD: str = ""
+    DENTIST_PLUS_BRANCH_ID: int = 1
     REMINDER_CHECK_TIME: str  # "HH:MM", например "10:00" — во сколько отправлять напоминания
     REMINDER_TIMEZONE: str = "UTC"  # таймзона для "завтра" и времени запуска (например Europe/Moscow)
     REMINDER_SIGNATURE: str = "команда доктора Шевцовой🦷"
