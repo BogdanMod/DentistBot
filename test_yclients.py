@@ -75,7 +75,7 @@ async def main() -> None:
     await test_rate_limit_tracking()
     await test_get_records_mapping()
     await test_find_client_match_by_phone()
-    print("PASS: Dentist Plus client tests")
+    print("PASS: Dentist plus client tests")
 
 
 if __name__ == "__main__":

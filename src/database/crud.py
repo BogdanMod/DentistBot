@@ -68,7 +68,7 @@ class UserCRUD:
         session: AsyncSession,
         yclients_client_id: int
     ) -> Optional[User]:
-        """Получить пользователя по YClients client ID"""
+        """Получить пользователя по Dentist plus client ID"""
         result = await session.execute(
             select(User).where(User.yclients_client_id == yclients_client_id)
         )

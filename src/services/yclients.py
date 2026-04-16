@@ -39,7 +39,7 @@ def _to_iso_utc(dt_str: str) -> str:
 
 class YClientsClient:
     """
-    Адаптер на Dentist Plus API.
+    Адаптер на Dentist plus API.
     Оставлен с прежним именем, чтобы минимально затрагивать остальной код.
     """
 
@@ -78,19 +78,19 @@ class YClientsClient:
 
     async def _auth(self) -> None:
         if not self.login or not self.password:
-            raise YClientsAPIError("Dentist Plus credentials are not configured")
+            raise YClientsAPIError("Dentist plus credentials are not configured")
 
         session = await self._get_session()
         url = f"{self.base_url}/auth"
         async with session.post(url, json={"login": self.login, "pass": self.password}) as response:
             data = await response.json()
             if response.status >= 400:
-                raise YClientsAPIError(f"Dentist Plus auth failed: {data}")
+                raise YClientsAPIError(f"Dentist plus auth failed: {data}")
 
         self._token = data.get("token")
         expires_at_raw = data.get("expires_at")
         if not self._token:
-            raise YClientsAPIError("Dentist Plus auth token missing")
+            raise YClientsAPIError("Dentist plus auth token missing")
 
         if isinstance(expires_at_raw, str):
             self._token_expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
@@ -122,7 +122,7 @@ class YClientsClient:
                         data = await response.json()
                     except Exception:
                         text = await response.text()
-                        raise YClientsAPIError(f"Dentist Plus non-JSON response: {response.status} {text[:400]}")
+                        raise YClientsAPIError(f"Dentist plus non-JSON response: {response.status} {text[:400]}")
 
                     # Протух токен — один раз пробуем переавторизоваться
                     if response.status == 401 and auth and attempt == 1:
@@ -132,7 +132,7 @@ class YClientsClient:
                         continue
 
                     if response.status >= 400:
-                        raise YClientsAPIError(f"Dentist Plus API error: {response.status} {data}")
+                        raise YClientsAPIError(f"Dentist plus API error: {response.status} {data}")
                     return data
             except ClientError as e:
                 if attempt < 3:

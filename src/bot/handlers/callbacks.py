@@ -72,7 +72,7 @@ async def handle_confirm_appointment(callback: CallbackQuery) -> None:
         await callback.answer("Некорректные данные", show_alert=True)
         return
 
-    # Обновляем статус в YClients
+    # Обновляем статус в Dentist plus
     success = await yclients_client.update_record_status(
         record_id=record_id,
         status="confirmed",
@@ -155,7 +155,7 @@ async def handle_cancel_reason(callback: CallbackQuery) -> None:
 
     reason_text = reasons.get(reason, "Не указана")
 
-    # Отменяем запись в YClients
+    # Отменяем запись в Dentist plus
     success = await yclients_client.update_record_status(
         record_id=record_id,
         status="deleted",

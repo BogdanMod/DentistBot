@@ -46,7 +46,7 @@ def _format_record_line(
 async def send_admin_report_for_date(bot: Bot, target: date) -> None:
     """
     Ежедневный отчёт админу:
-    - все записи из YClients на target
+    - все записи из Dentist plus на target
     - кому отправили/не отправили и почему
     - какой ответ получен (подтвердил/отменил/перенос/нет ответа)
     """
@@ -75,7 +75,7 @@ async def send_admin_report_for_date(bot: Bot, target: date) -> None:
                     filtered.append(r)
             records = filtered
     except Exception as e:
-        logger.error("Failed to build admin report (YClients): %s", e, exc_info=True)
+        logger.error("Failed to build admin report (Dentist plus): %s", e, exc_info=True)
 
     # Подтягиваем пользователей по yclients_client_id (чтобы знать, кто зарегистрирован в боте)
     client_ids: set[int] = set()
@@ -208,7 +208,7 @@ async def send_admin_report_for_date(bot: Bot, target: date) -> None:
 
     header = (
         f"📋 Отчёт по напоминаниям на {target.strftime('%d.%m.%Y')}\n"
-        f"- Всего записей в YClients: {len(records)}\n"
+        f"- Всего записей в Dentist plus: {len(records)}\n"
         f"- Не зарегистрированы в боте: {no_bot}\n"
         f"- Отправлено: {sent}\n"
         f"- Не отправлено: {not_sent}\n"

@@ -1,4 +1,4 @@
-"""Безопасное извлечение полей из записи YClients (без KeyError)."""
+"""Безопасное извлечение полей из записи Dentist plus (без KeyError)."""
 from datetime import datetime, timezone
 from typing import Any, Optional
 

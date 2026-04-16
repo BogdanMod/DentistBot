@@ -56,7 +56,7 @@ class ReminderScheduler:
         Проверка и отправка напоминаний.
 
         Логика:
-        1. Получить все записи из YClients на завтра (следующий календарный день в REMINDER_TIMEZONE)
+        1. Получить все записи из Dentist plus на завтра (следующий календарный день в REMINDER_TIMEZONE)
         2. Для каждой записи найти зарегистрированного пользователя
         3. Создать reminder если ещё не создан
         4. Отправить если ещё не отправлен
@@ -107,7 +107,7 @@ class ReminderScheduler:
             )
 
         except Exception as e:
-            logger.error(f"Failed to get records from YClients: {str(e)}")
+            logger.error(f"Failed to get records from Dentist plus: {str(e)}")
             return
 
         sent_count = 0
