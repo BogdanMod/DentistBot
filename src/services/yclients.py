@@ -28,13 +28,96 @@ def _full_name(user: dict[str, Any]) -> str:
     ).strip()
 
 
-def _to_iso_utc(dt_str: str) -> str:
-    parsed = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+def _clinic_tz() -> ZoneInfo:
     try:
-        clinic_tz = ZoneInfo(settings.REMINDER_TIMEZONE or "UTC")
+        return ZoneInfo(settings.REMINDER_TIMEZONE or "UTC")
     except Exception:
-        clinic_tz = ZoneInfo("UTC")
-    return parsed.replace(tzinfo=clinic_tz).astimezone(timezone.utc).isoformat()
+        return ZoneInfo("UTC")
+
+
+def _visit_start_to_iso_utc(raw: Any) -> str | None:
+    """
+    Dentist plus может отдавать start как 'YYYY-MM-DD HH:MM:SS' (локаль клиники),
+    ISO-8601 с 'T', строку с оффсетом через пробел, или unix timestamp.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(float(raw), tz=timezone.utc)
+            return dt.isoformat()
+        except (ValueError, OSError, OverflowError):
+            return None
+    if isinstance(raw, datetime):
+        dt = raw
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_clinic_tz())
+        return dt.astimezone(timezone.utc).isoformat()
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+
+    clinic_tz = _clinic_tz()
+    dt: datetime | None = None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        dt = None
+    if dt is None:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                parsed = datetime.strptime(s, fmt)
+                if fmt == "%Y-%m-%d":
+                    parsed = parsed.replace(hour=0, minute=0, second=0)
+                dt = parsed.replace(tzinfo=clinic_tz)
+                break
+            except ValueError:
+                continue
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=clinic_tz)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _extract_page_items_and_meta(payload: Any) -> tuple[list[Any], dict[str, Any]]:
+    """Ответ API может быть {data, meta}, списком, или с ключом visits/records."""
+    if isinstance(payload, list):
+        return payload, {}
+    if not isinstance(payload, dict):
+        return [], {}
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    data = payload.get("data")
+    if isinstance(data, list):
+        return data, meta
+    if isinstance(data, dict):
+        for key in ("visits", "records", "items", "data"):
+            block = data.get(key)
+            if isinstance(block, list):
+                return block, meta
+    for key in ("visits", "records", "items", "results", "result"):
+        block = payload.get(key)
+        if isinstance(block, list):
+            return block, meta
+    return [], meta
+
+
+def _last_page_from_meta(meta: dict[str, Any], page: int) -> int:
+    for src in (meta, meta.get("pagination") if isinstance(meta.get("pagination"), dict) else {}):
+        if not isinstance(src, dict):
+            continue
+        for key in ("last_page", "total_pages", "pages"):
+            lp = src.get(key)
+            if lp is not None:
+                try:
+                    return max(page, int(lp))
+                except (TypeError, ValueError):
+                    pass
+    return page
 
 
 class YClientsClient:
@@ -152,11 +235,11 @@ class YClientsClient:
             query["page"] = page
             query.setdefault("per_page", 200)
             payload = await self._make_request("GET", endpoint, params=query)
-            data = payload.get("data", []) if isinstance(payload, dict) else []
-            meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
-            if isinstance(data, list):
-                result.extend(data)
-            last_page = int(meta.get("last_page") or page)
+            chunk, meta = _extract_page_items_and_meta(payload)
+            for item in chunk:
+                if isinstance(item, dict):
+                    result.append(item)
+            last_page = _last_page_from_meta(meta, page)
             if page >= last_page:
                 break
             page += 1
@@ -183,6 +266,15 @@ class YClientsClient:
             logger.error("Failed to get visits: %s", e)
             return []
 
+        if not visits:
+            logger.info(
+                "No visits from Dentist plus API for date_from=%s date_to=%s branch_id=%s — "
+                "проверьте DENTIST_PLUS_BRANCH_ID, URL и доступ партнёрского аккаунта.",
+                params["date_from"],
+                params["date_to"],
+                self.branch_id,
+            )
+
         # Нормализуем в старый формат для текущего кода
         records: list[dict[str, Any]] = []
         for v in visits:
@@ -191,24 +283,33 @@ class YClientsClient:
             patient = v.get("patient") if isinstance(v.get("patient"), dict) else {}
             doctor = v.get("doctor") if isinstance(v.get("doctor"), dict) else {}
             start = v.get("start")
-            if not isinstance(start, str):
+            dt_iso = _visit_start_to_iso_utc(start)
+            if dt_iso is None:
+                logger.debug(
+                    "Skip visit without parseable start: id=%s start=%r",
+                    v.get("id"),
+                    start,
+                )
                 continue
-            try:
-                dt_iso = _to_iso_utc(start)
-            except ValueError:
-                continue
+
+            client_id = patient.get("id")
+            if client_id is None:
+                client_id = v.get("patient_id")
+            staff_id = doctor.get("id")
+            if staff_id is None:
+                staff_id = v.get("doctor_id")
 
             records.append(
                 {
                     "id": v.get("id"),
                     "datetime": dt_iso,
                     "client": {
-                        "id": patient.get("id"),
+                        "id": client_id,
                         "name": _full_name(patient),
                         "phone": patient.get("phone", ""),
                     },
                     "staff": {
-                        "id": doctor.get("id"),
+                        "id": staff_id,
                         "name": _full_name(doctor) or "Доктор",
                     },
                     "services": [],
@@ -216,13 +317,28 @@ class YClientsClient:
                     "_raw": v,
                 }
             )
+        if visits and not records:
+            sample = visits[0] if visits else {}
+            keys = list(sample.keys())[:30] if isinstance(sample, dict) else []
+            logger.warning(
+                "Dentist plus returned %s visits but none mapped — likely unexpected `start` format. "
+                "sample_start=%r keys=%s",
+                len(visits),
+                sample.get("start") if isinstance(sample, dict) else None,
+                keys,
+            )
         return records
 
     async def get_record(self, record_id: int) -> Optional[dict[str, Any]]:
         try:
-            visit = await self._make_request("GET", f"/visits/{record_id}")
-            if isinstance(visit, dict):
-                return visit
+            payload = await self._make_request("GET", f"/visits/{record_id}")
+            if not isinstance(payload, dict):
+                return None
+            if payload.get("id") is not None:
+                return payload
+            inner = payload.get("data")
+            if isinstance(inner, dict):
+                return inner
             return None
         except YClientsAPIError as e:
             logger.error("Failed to get visit %s: %s", record_id, e)

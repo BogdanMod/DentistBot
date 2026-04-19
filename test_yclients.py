@@ -49,6 +49,36 @@ async def test_get_records_mapping() -> None:
     await client.close()
 
 
+async def test_get_records_iso_start_variants() -> None:
+    """API может отдавать start в ISO вместо 'YYYY-MM-DD HH:MM:SS'."""
+    client = YClientsClient()
+
+    async def fake_collect(_endpoint: str, _params: dict):
+        return [
+            {
+                "id": 1,
+                "start": "2026-04-12T10:30:00+03:00",
+                "patient": {"id": 1, "fname": "A", "lname": "B"},
+                "doctor": {"id": 2, "fname": "C", "lname": "D"},
+                "is_cancelled": False,
+            },
+            {
+                "id": 2,
+                "start": "2026-04-12 11:00:00",
+                "patient": {"id": 1, "fname": "A", "lname": "B"},
+                "doctor": {"id": 2, "fname": "C", "lname": "D"},
+                "is_cancelled": False,
+            },
+        ]
+
+    client._collect_paginated = fake_collect  # type: ignore[method-assign]
+    day = datetime(2026, 4, 12)
+    records = await client.get_records(day, day)
+    assert len(records) == 2
+    assert all("T" in r["datetime"] for r in records)
+    await client.close()
+
+
 async def test_find_client_match_by_phone() -> None:
     client = YClientsClient()
 
@@ -74,6 +104,7 @@ async def main() -> None:
     await test_client_init()
     await test_rate_limit_tracking()
     await test_get_records_mapping()
+    await test_get_records_iso_start_variants()
     await test_find_client_match_by_phone()
     print("PASS: Dentist plus client tests")
 
