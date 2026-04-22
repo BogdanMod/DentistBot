@@ -131,6 +131,21 @@ class YClientsClient:
         self.login = settings.DENTIST_PLUS_LOGIN
         self.password = settings.DENTIST_PLUS_PASSWORD
         self.branch_id = settings.DENTIST_PLUS_BRANCH_ID
+        self.use_branch_filter = self.branch_id > 0
+        masked_login = f"{self.login[:2]}***" if self.login else "<empty>"
+        logger.info(
+            "Dentist plus client init: base_url=%s branch_id=%s login=%s password_set=%s",
+            self.base_url,
+            self.branch_id,
+            masked_login,
+            bool(self.password),
+        )
+        if self.branch_id == 1:
+            logger.warning(
+                "DENTIST_PLUS_BRANCH_ID is 1. If your real branch differs, reminders will always get 0 visits."
+            )
+        if not self.use_branch_filter:
+            logger.info("Branch filter disabled (DENTIST_PLUS_BRANCH_ID <= 0)")
 
         self.timeout = ClientTimeout(total=30)
         self._session: Optional[aiohttp.ClientSession] = None
@@ -254,9 +269,10 @@ class YClientsClient:
         params: dict[str, Any] = {
             "date_from": start_date.strftime("%Y-%m-%d"),
             "date_to": end_date.strftime("%Y-%m-%d"),
-            "branch_id": self.branch_id,
             "with_deleted": "1",
         }
+        if self.use_branch_filter:
+            params["branch_id"] = self.branch_id
         if client_id:
             params["patient_id"] = client_id
 
@@ -272,8 +288,21 @@ class YClientsClient:
                 "проверьте DENTIST_PLUS_BRANCH_ID, URL и доступ партнёрского аккаунта.",
                 params["date_from"],
                 params["date_to"],
-                self.branch_id,
+                params.get("branch_id"),
             )
+            if self.use_branch_filter:
+                params_no_branch = dict(params)
+                params_no_branch.pop("branch_id", None)
+                try:
+                    visits = await self._collect_paginated("/visits", params_no_branch)
+                except YClientsAPIError as e:
+                    logger.warning("Retry without branch_id failed: %s", e)
+                    visits = []
+                if visits:
+                    logger.warning(
+                        "Dentist plus returned visits only without branch_id. "
+                        "Set DENTIST_PLUS_BRANCH_ID=0 to disable branch filtering."
+                    )
 
         # Нормализуем в старый формат для текущего кода
         records: list[dict[str, Any]] = []
