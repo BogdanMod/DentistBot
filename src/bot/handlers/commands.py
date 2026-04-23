@@ -34,17 +34,29 @@ class ConsultationStates(StatesGroup):
 
 
 _incomplete_booking_tasks: dict[int, asyncio.Task] = {}
+MAIN_MENU_BUTTONS = {
+    "📅 Записаться на консультацию",
+    "📆 Мои записи",
+    "🦷 Стоимость лечения",
+    "📸 Кейсы ДО / ПОСЛЕ",
+    "👩🏻‍⚕️ Наши врачи",
+    "🔎 Какая у меня проблема?",
+    "ℹ️ Как проходит лечение",
+    "❓ Частые вопросы",
+    "📍 Контакты",
+}
 
 
 MAIN_MENU_TEXT = (
-    "Здравствуйте!\n"
-    "Это официальный бот команды доктора Шевцовой.\n"
+    "✨ Здравствуйте!\n\n"
+    "Это официальный бот команды доктора Шевцовой 🦷\n\n"
     "Здесь вы можете:\n"
-    "• записаться на консультацию/посмотреть дату запланированного визита\n"
-    "• узнать стоимость лечения\n"
-    "• познакомиться с врачами\n"
-    "• посмотреть результаты лечения\n"
-    "• задать вопрос\n"
+    "• 📅 записаться на консультацию\n"
+    "• 📆 посмотреть дату запланированного визита\n"
+    "• 🦷 узнать стоимость лечения\n"
+    "• 👩🏻‍⚕️ познакомиться с врачами\n"
+    "• 📸 посмотреть результаты лечения\n"
+    "• ❓ задать вопрос\n\n"
     "Выберите нужный раздел ⬇️"
 )
 
@@ -177,6 +189,31 @@ def _normalize_phone(raw: str) -> Optional[str]:
     return validate_phone(raw)
 
 
+async def _handle_menu_shortcut_in_fsm(message: Message, state: FSMContext) -> bool:
+    text = (message.text or "").strip()
+    if text not in MAIN_MENU_BUTTONS:
+        return False
+
+    await state.clear()
+    _cancel_incomplete_booking_reminder(message.from_user.id)
+
+    if text == "📍 Контакты":
+        await message.answer(
+            "Мы будем рады видеть Вас на консультации.\n"
+            f"Адрес: {settings.CLINIC_ADDRESS}\n"
+            f"Телефон: {settings.CLINIC_PHONE}\n"
+            f"Telegram: {settings.CLINIC_TELEGRAM}",
+            reply_markup=_contacts_kb(),
+        )
+        return True
+
+    await message.answer(
+        "Вернул вас в главное меню. Выберите нужный раздел ⬇️",
+        reply_markup=_main_menu_kb(),
+    )
+    return True
+
+
 async def _schedule_incomplete_booking_reminder(bot, chat_id: int) -> None:
     await asyncio.sleep(6 * 60 * 60)
     await bot.send_message(
@@ -252,6 +289,8 @@ async def consultation_choose_specialist(callback, state: FSMContext) -> None:
 
 @commands_router.message(ConsultationStates.waiting_name)
 async def consultation_get_name(message: Message, state: FSMContext) -> None:
+    if await _handle_menu_shortcut_in_fsm(message, state):
+        return
     full_name = (message.text or "").strip()
     if len(full_name) < 2:
         await message.answer("Пожалуйста, укажите корректное ФИО.")
@@ -264,6 +303,8 @@ async def consultation_get_name(message: Message, state: FSMContext) -> None:
 
 @commands_router.message(ConsultationStates.waiting_phone)
 async def consultation_get_phone(message: Message, state: FSMContext) -> None:
+    if await _handle_menu_shortcut_in_fsm(message, state):
+        return
     normalized = _normalize_phone(message.text or "")
     if not normalized:
         await message.answer("Введите корректный номер телефона в формате +7XXXXXXXXXX.")
