@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     REMINDER_TIMEZONE: str = "UTC"  # таймзона для "завтра" и времени запуска (например Europe/Moscow)
     REMINDER_SIGNATURE: str = "команда доктора Шевцовой🦷"
     RESCHEDULE_CONTACT: str = "@Shevtsova_team"
+    CLINIC_ADDRESS: str = "Адрес уточняйте у администратора"
+    CLINIC_PHONE: str = "+70000000000"
+    CLINIC_TELEGRAM: str = "@Shevtsova_team"
+    CLINIC_MAP_URL: str = "https://maps.google.com"
 
 
 settings = Settings()
