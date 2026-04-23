@@ -47,6 +47,10 @@ MAIN_MENU_BUTTONS = {
 }
 
 
+def _is_contacts_button(text: str) -> bool:
+    return "контакт" in text.lower()
+
+
 MAIN_MENU_TEXT = (
     "✨ Здравствуйте!\n\n"
     "Это официальный бот команды доктора Шевцовой 🦷\n\n"
@@ -82,6 +86,7 @@ def _book_specialist_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Хирург", callback_data="book_spec_surgeon")],
             [InlineKeyboardButton(text="Ортопед", callback_data="book_spec_orthopedist")],
             [InlineKeyboardButton(text="Профессиональная гигиена", callback_data="book_spec_hygiene")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -96,6 +101,7 @@ def _cost_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Виниры и протезирование", callback_data="cost_veneers")],
             [InlineKeyboardButton(text="Лечение зубов", callback_data="cost_therapy")],
             [InlineKeyboardButton(text="Профессиональная гигиена", callback_data="cost_hygiene")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -105,6 +111,7 @@ def _book_and_cases_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📅 Записаться на консультацию", callback_data="go_booking")],
             [InlineKeyboardButton(text="📸 Посмотреть кейсы", callback_data="go_cases")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_cost_menu")],
         ]
     )
 
@@ -118,13 +125,17 @@ def _cases_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Неправильный прикус", callback_data="case_bite")],
             [InlineKeyboardButton(text="Потеря зуба", callback_data="case_missing")],
             [InlineKeyboardButton(text="Эстетика улыбки", callback_data="case_smile")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
 
 def _book_only_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="📅 Записаться на консультацию", callback_data="go_booking")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Записаться на консультацию", callback_data="go_booking")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
+        ]
     )
 
 
@@ -136,6 +147,7 @@ def _doctors_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Терапевт", callback_data="doc_therapist")],
             [InlineKeyboardButton(text="Хирург", callback_data="doc_surgeon")],
             [InlineKeyboardButton(text="Ортопед", callback_data="doc_orthopedist")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -145,6 +157,7 @@ def _doctor_actions_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Работы врача", callback_data="go_cases")],
             [InlineKeyboardButton(text="Записаться на консультацию", callback_data="go_booking")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_doctors_menu")],
         ]
     )
 
@@ -157,6 +170,7 @@ def _diagnostics_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Щелкает или болит челюсть", callback_data="diag_gnato")],
             [InlineKeyboardButton(text="Отсутствует зуб", callback_data="diag_orthopedist")],
             [InlineKeyboardButton(text="Хочу улучшить эстетику улыбки", callback_data="diag_esthetic")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -169,6 +183,7 @@ def _faq_menu_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Можно ли лечить зубы взрослым?", callback_data="faq_adults")],
             [InlineKeyboardButton(text="Как проходит имплантация?", callback_data="faq_implant")],
             [InlineKeyboardButton(text="Как часто делать профессиональную гигиену?", callback_data="faq_hygiene")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -181,6 +196,7 @@ def _contacts_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📍 Построить маршрут", url=settings.CLINIC_MAP_URL)],
             [InlineKeyboardButton(text="📞 Позвонить", url=f"tel:{settings.CLINIC_PHONE}")],
             [InlineKeyboardButton(text="💬 Написать администратору", url=tg_url)],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
 
@@ -191,13 +207,13 @@ def _normalize_phone(raw: str) -> Optional[str]:
 
 async def _handle_menu_shortcut_in_fsm(message: Message, state: FSMContext) -> bool:
     text = (message.text or "").strip()
-    if text not in MAIN_MENU_BUTTONS:
+    if text not in MAIN_MENU_BUTTONS and not _is_contacts_button(text):
         return False
 
     await state.clear()
     _cancel_incomplete_booking_reminder(message.from_user.id)
 
-    if text == "📍 Контакты":
+    if _is_contacts_button(text):
         await message.answer(
             "Мы будем рады видеть Вас на консультации.\n"
             f"Адрес: {settings.CLINIC_ADDRESS}\n"
@@ -411,6 +427,30 @@ async def go_cases(callback) -> None:
     await callback.message.answer("Выберите проблему.", reply_markup=_cases_menu_kb())
 
 
+@commands_router.callback_query(F.data == "back_main")
+async def back_main(callback) -> None:
+    await callback.answer()
+    await callback.message.answer(
+        "Главное меню ⬇️",
+        reply_markup=_main_menu_kb(),
+    )
+
+
+@commands_router.callback_query(F.data == "back_cost_menu")
+async def back_cost_menu(callback) -> None:
+    await callback.answer()
+    await callback.message.answer("Выберите интересующее лечение.", reply_markup=_cost_menu_kb())
+
+
+@commands_router.callback_query(F.data == "back_doctors_menu")
+async def back_doctors_menu(callback) -> None:
+    await callback.answer()
+    await callback.message.answer(
+        "Наша команда специалистов работает комплексно, чтобы обеспечить максимально качественный результат лечения.",
+        reply_markup=_doctors_menu_kb(),
+    )
+
+
 @commands_router.message(F.text == "📸 Кейсы ДО / ПОСЛЕ")
 async def cases_start(message: Message) -> None:
     await message.answer("Выберите проблему.", reply_markup=_cases_menu_kb())
@@ -535,7 +575,7 @@ async def faq_item(callback) -> None:
     await callback.message.answer(answers.get(callback.data, "Ответ уточняется у врача."), reply_markup=_book_only_kb())
 
 
-@commands_router.message(F.text == "📍 Контакты")
+@commands_router.message(F.text.func(lambda t: isinstance(t, str) and "контакт" in t.lower()))
 async def contacts(message: Message) -> None:
     await message.answer(
         "Мы будем рады видеть Вас на консультации.\n"
