@@ -681,3 +681,41 @@ async def report_command(message: Message) -> None:
 
     await message.answer(f"Готовлю отчёт на {target.strftime('%d.%m.%Y')}…")
     await send_admin_report_for_date(message.bot, target)
+
+
+@commands_router.message(F.text.startswith("/dpdiag"))
+async def dentist_plus_diag_command(message: Message) -> None:
+    """Админ-команда диагностики Dentist plus: /dpdiag"""
+    if message.from_user.id != settings.ADMIN_CHAT_ID:
+        return
+
+    await message.answer("Проверяю подключение к Dentist Plus…")
+    diag = await yclients_client.diagnose_connection()
+
+    lines = [
+        "🧪 Диагностика Dentist Plus",
+        f"• base_url: {diag.get('base_url')}",
+        f"• кандидаты URL: {', '.join(diag.get('base_urls', []))}",
+        f"• login: {'ok' if diag.get('login_configured') else 'missing'}",
+        f"• password: {'ok' if diag.get('password_configured') else 'missing'}",
+        f"• branch_id: {diag.get('branch_id')}",
+        f"• auth: {'ok' if diag.get('auth_ok') else 'fail'}",
+    ]
+
+    auth_error = diag.get("auth_error")
+    if auth_error:
+        lines.append(f"• auth_error: {auth_error}")
+
+    lines.append(f"• visits: {'ok' if diag.get('visits_ok') else 'fail'}")
+    lines.append(f"• visits_count: {diag.get('visits_count', 0)}")
+
+    visits_error = diag.get("visits_error")
+    if visits_error:
+        lines.append(f"• visits_error: {visits_error}")
+
+    if diag.get("auth_ok") and diag.get("visits_ok"):
+        lines.append("✅ Подключение к API работает")
+    else:
+        lines.append("❌ Есть проблема с доступом к Dentist Plus")
+
+    await message.answer("\n".join(lines))

@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
+from urllib.parse import urlparse
 
 import aiohttp
 from aiohttp import ClientError, ClientTimeout
@@ -128,6 +129,8 @@ class YClientsClient:
 
     def __init__(self):
         self.base_url = settings.DENTIST_PLUS_API_URL.rstrip("/")
+        self._base_urls = self._build_base_url_candidates(self.base_url)
+        self._base_url_idx = 0
         self.login = settings.DENTIST_PLUS_LOGIN
         self.password = settings.DENTIST_PLUS_PASSWORD
         self.branch_id = settings.DENTIST_PLUS_BRANCH_ID
@@ -140,6 +143,7 @@ class YClientsClient:
             masked_login,
             bool(self.password),
         )
+        logger.info("Dentist plus base URL candidates: %s", self._base_urls)
         if self.branch_id == 1:
             logger.warning(
                 "DENTIST_PLUS_BRANCH_ID is 1. If your real branch differs, reminders will always get 0 visits."
@@ -154,6 +158,37 @@ class YClientsClient:
 
         self._request_times: list[datetime] = []
         self._max_requests_per_minute = 60
+
+    @staticmethod
+    def _build_base_url_candidates(primary_url: str) -> list[str]:
+        candidates: list[str] = []
+        for raw in (
+            primary_url,
+            "https://api-balancer.dentist-plus.com/partner",
+            "https://api2.dentist-plus.com/partner",
+        ):
+            url = (raw or "").strip().rstrip("/")
+            if not url:
+                continue
+            if url not in candidates:
+                candidates.append(url)
+        return candidates or ["https://api2.dentist-plus.com/partner"]
+
+    def _active_base_url(self) -> str:
+        if not self._base_urls:
+            self._base_urls = ["https://api2.dentist-plus.com/partner"]
+            self._base_url_idx = 0
+        self._base_url_idx = max(0, min(self._base_url_idx, len(self._base_urls) - 1))
+        return self._base_urls[self._base_url_idx]
+
+    def _rotate_base_url(self) -> bool:
+        if self._base_url_idx + 1 >= len(self._base_urls):
+            return False
+        prev = self._active_base_url()
+        self._base_url_idx += 1
+        self.base_url = self._active_base_url()
+        logger.warning("Switching Dentist plus base URL from %s to %s", prev, self.base_url)
+        return True
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -179,21 +214,41 @@ class YClientsClient:
             raise YClientsAPIError("Dentist plus credentials are not configured")
 
         session = await self._get_session()
-        url = f"{self.base_url}/auth"
-        async with session.post(url, json={"login": self.login, "pass": self.password}) as response:
-            data = await response.json()
-            if response.status >= 400:
-                raise YClientsAPIError(f"Dentist plus auth failed: {data}")
+        url = f"{self._active_base_url()}/auth"
+        payloads = (
+            {"login": self.login, "pass": self.password},
+            {"login": self.login, "password": self.password},
+        )
+        last_error: Exception | None = None
 
-        self._token = data.get("token")
-        expires_at_raw = data.get("expires_at")
-        if not self._token:
-            raise YClientsAPIError("Dentist plus auth token missing")
+        for payload in payloads:
+            try:
+                async with session.post(url, json=payload) as response:
+                    try:
+                        data = await response.json()
+                    except Exception:
+                        text = await response.text()
+                        raise YClientsAPIError(
+                            f"Dentist plus auth non-JSON response: {response.status} {text[:400]}"
+                        )
+                    if response.status >= 400:
+                        raise YClientsAPIError(f"Dentist plus auth failed: {response.status} {data}")
 
-        if isinstance(expires_at_raw, str):
-            self._token_expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
-        else:
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+                self._token = data.get("token")
+                expires_at_raw = data.get("expires_at")
+                if not self._token:
+                    raise YClientsAPIError("Dentist plus auth token missing")
+
+                if isinstance(expires_at_raw, str):
+                    self._token_expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
+                else:
+                    self._token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+                return
+            except (ClientError, asyncio.TimeoutError, YClientsAPIError, ValueError) as e:
+                last_error = e
+                continue
+
+        raise YClientsAPIError(f"Unable to authorize in Dentist plus: {last_error}")
 
     async def _ensure_token(self) -> None:
         now = datetime.now(timezone.utc)
@@ -206,7 +261,7 @@ class YClientsClient:
             await self._ensure_token()
 
         session = await self._get_session()
-        url = f"{self.base_url}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
+        url = f"{self._active_base_url()}{endpoint if endpoint.startswith('/') else '/' + endpoint}"
         headers = kwargs.pop("headers", {})
         if auth and self._token:
             headers["Authorization"] = f"Bearer {self._token}"
@@ -232,7 +287,17 @@ class YClientsClient:
                     if response.status >= 400:
                         raise YClientsAPIError(f"Dentist plus API error: {response.status} {data}")
                     return data
-            except ClientError as e:
+            except (ClientError, asyncio.TimeoutError) as e:
+                host = urlparse(url).netloc
+                logger.warning(
+                    "Dentist plus request failed (%s %s): %s (attempt %s)",
+                    method,
+                    host,
+                    e,
+                    attempt,
+                )
+                if attempt == 2:
+                    self._rotate_base_url()
                 if attempt < 3:
                     await asyncio.sleep(1)
                     continue
@@ -500,6 +565,44 @@ class YClientsClient:
             "email": best.get("email", ""),
             "phone": best.get("phone", ""),
         }
+
+    async def diagnose_connection(self) -> dict[str, Any]:
+        """
+        Диагностика подключения к Dentist plus.
+        Нужна для админ-команды, чтобы быстро понять, где проблема:
+        креды, сеть, auth или пустые данные.
+        """
+        report: dict[str, Any] = {
+            "base_url": self._active_base_url(),
+            "base_urls": list(self._base_urls),
+            "login_configured": bool(self.login),
+            "password_configured": bool(self.password),
+            "branch_id": self.branch_id,
+            "auth_ok": False,
+            "auth_error": None,
+            "visits_ok": False,
+            "visits_count": 0,
+            "visits_error": None,
+        }
+        try:
+            await self._ensure_token()
+            report["auth_ok"] = True
+        except Exception as e:
+            report["auth_error"] = str(e)
+            return report
+
+        try:
+            tz = _clinic_tz()
+            now = datetime.now(tz)
+            start = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=tz)
+            end = start + timedelta(days=1)
+            records = await self.get_records(start, end)
+            report["visits_ok"] = True
+            report["visits_count"] = len(records)
+            return report
+        except Exception as e:
+            report["visits_error"] = str(e)
+            return report
 
 
 yclients_client = YClientsClient()
