@@ -73,8 +73,16 @@ class UserCRUD:
             select(User).where(User.yclients_client_id == yclients_client_id)
         )
         return result.scalar_one_or_none()
-        
-    
+
+    @staticmethod
+    async def list_registered(session: AsyncSession) -> list[User]:
+        """Все пользователи с флагом is_registered (для админ-отчёта)."""
+        result = await session.execute(
+            select(User).where(User.is_registered.is_(True)).order_by(User.id)
+        )
+        return list(result.scalars().all())
+
+
 # Класс ReminderCRUD
 
 class ReminderCRUD:

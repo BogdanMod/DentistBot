@@ -6,7 +6,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -719,3 +719,57 @@ async def dentist_plus_diag_command(message: Message) -> None:
         lines.append("❌ Есть проблема с доступом к Dentist Plus")
 
     await message.answer("\n".join(lines))
+
+
+def _split_user_list_messages(header: str, lines: list[str], continue_header: str, max_len: int = 3900) -> list[str]:
+    """Склеивает строки в несколько сообщений, не превышая лимит Telegram (~4096)."""
+    if not lines:
+        return [header]
+    result: list[str] = []
+    i = 0
+    first = True
+    while i < len(lines):
+        h = header if first else continue_header
+        base_len = len(h) + 2  # "\n\n"
+        block: list[str] = []
+        while i < len(lines):
+            line = lines[i]
+            body = "\n".join(block + [line])
+            if base_len + len(body) <= max_len:
+                block.append(line)
+                i += 1
+            else:
+                break
+        if block:
+            result.append(f"{h}\n\n" + "\n".join(block))
+            first = False
+        else:
+            # одна строка не помещается — всё равно отправляем (для ФИО обычно хватает)
+            result.append(f"{h}\n\n{lines[i]}")
+            i += 1
+            first = False
+    return result
+
+
+@commands_router.message(Command("users"))
+async def admin_list_registered_users(message: Message) -> None:
+    """Админ: список зарегистрированных пользователей и их ФИО — /users"""
+    if message.from_user.id != settings.ADMIN_CHAT_ID:
+        return
+
+    async for session in db_manager.get_session():
+        users = await UserCRUD.list_registered(session)
+
+    n = len(users)
+    if n == 0:
+        await message.answer("👥 Зарегистрированных пользователей нет.")
+        return
+
+    lines = []
+    for i, u in enumerate(users, start=1):
+        name = (u.full_name or "").strip() or "— не указано"
+        lines.append(f"{i}. {name}")
+
+    header = f"👥 Зарегистрировано: {n}"
+    for part in _split_user_list_messages(header, lines, "👥 (продолжение)"):
+        await message.answer(part)
