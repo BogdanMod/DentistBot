@@ -51,7 +51,7 @@ class ReminderScheduler:
             pass
         return 10, 0
 
-    async def check_and_send_reminders(self) -> None:
+    async def check_and_send_reminders(self) -> dict[str, int | str]:
         """
         Проверка и отправка напоминаний.
 
@@ -62,6 +62,17 @@ class ReminderScheduler:
         4. Отправить если ещё не отправлен
         """
         logger.info("Starting reminder check...")
+        stats: dict[str, int | str] = {
+            "records_count": 0,
+            "sent_count": 0,
+            "skipped_count": 0,
+            "skip_missing_id_or_client": 0,
+            "skip_invalid_datetime": 0,
+            "skip_no_user": 0,
+            "skip_already_sent": 0,
+            "send_failed": 0,
+            "process_errors": 0,
+        }
 
         try:
             tz = ZoneInfo(settings.REMINDER_TIMEZONE or "UTC")
@@ -105,10 +116,12 @@ class ReminderScheduler:
                 f"Reminder check: tomorrow={tomorrow} tz={settings.REMINDER_TIMEZONE}, "
                 f"records_count={len(records)}"
             )
+            stats["records_count"] = len(records)
 
         except Exception as e:
             logger.error(f"Failed to get records from Dentist plus: {str(e)}")
-            return
+            stats["error"] = f"get_records_failed: {e}"
+            return stats
 
         sent_count = 0
         skipped_count = 0
@@ -121,11 +134,13 @@ class ReminderScheduler:
             if rid is None or cid is None:
                 logger.info(f"Skip record (missing id or client): keys={list(record.keys())[:10]}")
                 skipped_count += 1
+                stats["skip_missing_id_or_client"] = int(stats["skip_missing_id_or_client"]) + 1
                 continue
             appt_dt = record_appointment_datetime(record)
             if appt_dt is None:
                 logger.info(f"Skip record {rid}: no valid datetime")
                 skipped_count += 1
+                stats["skip_invalid_datetime"] = int(stats["skip_invalid_datetime"]) + 1
                 continue
 
             try:
@@ -140,6 +155,7 @@ class ReminderScheduler:
                             f"Skip record {rid}: no bot user for yclients_client_id={cid}"
                         )
                         skipped_count += 1
+                        stats["skip_no_user"] = int(stats["skip_no_user"]) + 1
                         continue
 
                     existing = await ReminderCRUD.get_by_record_id(
@@ -149,6 +165,7 @@ class ReminderScheduler:
 
                     if existing and existing.is_sent:
                         skipped_count += 1
+                        stats["skip_already_sent"] = int(stats["skip_already_sent"]) + 1
                         continue
 
                     if not existing:
@@ -172,12 +189,17 @@ class ReminderScheduler:
                         sent_count += 1
                     else:
                         skipped_count += 1
+                        stats["send_failed"] = int(stats["send_failed"]) + 1
 
             except Exception as e:
                 logger.error(f"Error processing record {rid}: {str(e)}", exc_info=True)
                 skipped_count += 1
+                stats["process_errors"] = int(stats["process_errors"]) + 1
 
         logger.info(f"Reminder check completed. Sent: {sent_count}, Skipped: {skipped_count}")
+        stats["sent_count"] = sent_count
+        stats["skipped_count"] = skipped_count
+        return stats
 
     def start(self) -> None:
         """Запуск планировщика: раз в день в REMINDER_CHECK_TIME по REMINDER_TIMEZONE."""

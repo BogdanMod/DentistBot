@@ -21,6 +21,7 @@ from src.config import settings
 from src.database.crud import UserCRUD
 from src.database.database import db_manager
 from src.services.admin_report import send_admin_report_for_date
+from src.services.scheduler import ReminderScheduler
 from src.services.yclients import yclients_client
 from src.utils.validators import validate_phone
 
@@ -773,3 +774,28 @@ async def admin_list_registered_users(message: Message) -> None:
     header = f"👥 Зарегистрировано: {n}"
     for part in _split_user_list_messages(header, lines, "👥 (продолжение)"):
         await message.answer(part)
+
+
+@commands_router.message(Command("remindcheck"))
+async def admin_run_reminder_check(message: Message, scheduler: ReminderScheduler) -> None:
+    """Админ: принудительный прогон напоминаний и отчёт по причинам пропуска."""
+    if message.from_user.id != settings.ADMIN_CHAT_ID:
+        return
+
+    await message.answer("Запускаю проверку и отправку напоминаний...")
+    stats = await scheduler.check_and_send_reminders()
+    lines = [
+        "🧾 Результат remindcheck",
+        f"• records_count: {stats.get('records_count', 0)}",
+        f"• sent_count: {stats.get('sent_count', 0)}",
+        f"• skipped_count: {stats.get('skipped_count', 0)}",
+        f"• skip_no_user: {stats.get('skip_no_user', 0)}",
+        f"• skip_already_sent: {stats.get('skip_already_sent', 0)}",
+        f"• skip_missing_id_or_client: {stats.get('skip_missing_id_or_client', 0)}",
+        f"• skip_invalid_datetime: {stats.get('skip_invalid_datetime', 0)}",
+        f"• send_failed: {stats.get('send_failed', 0)}",
+        f"• process_errors: {stats.get('process_errors', 0)}",
+    ]
+    if stats.get("error"):
+        lines.append(f"• error: {stats['error']}")
+    await message.answer("\n".join(lines))
