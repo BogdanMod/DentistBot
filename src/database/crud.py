@@ -62,6 +62,42 @@ class UserCRUD:
                 await session.refresh(existing)
                 return existing
             raise
+
+    @staticmethod
+    async def upsert_registered_user(
+        session: AsyncSession,
+        chat_id: int,
+        phone: str,
+        full_name: Optional[str] = None,
+        email: Optional[str] = None,
+        yclients_client_id: Optional[int] = None,
+    ) -> User:
+        """Создать или обновить регистрацию по Telegram chat_id/телефону."""
+        existing = await UserCRUD.get_by_chat_id(session, chat_id)
+        if existing is None:
+            existing = await UserCRUD.get_by_phone(session, phone)
+
+        if existing is None:
+            return await UserCRUD.create(
+                session=session,
+                chat_id=chat_id,
+                phone=phone,
+                full_name=full_name,
+                email=email,
+                yclients_client_id=yclients_client_id,
+            )
+
+        existing.chat_id = chat_id
+        existing.phone = phone
+        existing.full_name = full_name or existing.full_name
+        existing.email = email or existing.email
+        if yclients_client_id is not None:
+            existing.yclients_client_id = yclients_client_id
+        existing.is_registered = True
+        existing.is_active = True
+        await session.commit()
+        await session.refresh(existing)
+        return existing
     
     @staticmethod
     async def get_by_yclients_client_id(

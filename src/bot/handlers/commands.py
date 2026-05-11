@@ -201,8 +201,68 @@ def _contacts_kb() -> InlineKeyboardMarkup:
     )
 
 
+def _share_phone_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Поделиться номером телефона", request_contact=True)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def _normalize_phone(raw: str) -> Optional[str]:
     return validate_phone(raw)
+
+
+async def _bind_user_by_phone(chat_id: int, raw_phone: str, fallback_name: str | None = None) -> bool:
+    normalized = _normalize_phone(raw_phone)
+    if not normalized:
+        return False
+
+    client = await yclients_client.find_client(phone=normalized)
+    if not client or not client.get("id"):
+        return False
+
+    async for session in db_manager.get_session():
+        await UserCRUD.upsert_registered_user(
+            session=session,
+            chat_id=chat_id,
+            phone=normalized,
+            full_name=client.get("name") or fallback_name,
+            email=client.get("email") or None,
+            yclients_client_id=int(client["id"]),
+        )
+    return True
+
+
+async def _register_user_by_phone(message: Message, raw_phone: str) -> bool:
+    normalized = _normalize_phone(raw_phone)
+    if not normalized:
+        await message.answer(
+            "Не удалось распознать номер телефона. Пожалуйста, отправьте контакт кнопкой ниже.",
+            reply_markup=_share_phone_kb(),
+        )
+        return False
+
+    is_bound = await _bind_user_by_phone(
+        chat_id=message.from_user.id,
+        raw_phone=normalized,
+        fallback_name=message.from_user.full_name,
+    )
+    if not is_bound:
+        await message.answer(
+            "Не нашёл пациента с таким номером в базе клиники.\n"
+            "Проверьте, что номер совпадает с номером в записи, или напишите администратору.",
+            reply_markup=_main_menu_kb(),
+        )
+        return False
+
+    await message.answer(
+        "Готово, я нашёл вас в базе клиники и привязал записи к этому Telegram.",
+        reply_markup=_main_menu_kb(),
+    )
+    return True
 
 
 async def _handle_menu_shortcut_in_fsm(message: Message, state: FSMContext) -> bool:
@@ -314,21 +374,30 @@ async def consultation_get_name(message: Message, state: FSMContext) -> None:
     await state.update_data(full_name=full_name)
     await state.set_state(ConsultationStates.waiting_phone)
     _restart_incomplete_booking_reminder(message.bot, message.from_user.id)
-    await message.answer("Оставьте номер телефона.")
+    await message.answer("Оставьте номер телефона.", reply_markup=_share_phone_kb())
 
 
 @commands_router.message(ConsultationStates.waiting_phone)
 async def consultation_get_phone(message: Message, state: FSMContext) -> None:
     if await _handle_menu_shortcut_in_fsm(message, state):
         return
-    normalized = _normalize_phone(message.text or "")
+    raw_phone = message.contact.phone_number if message.contact else message.text or ""
+    normalized = _normalize_phone(raw_phone)
     if not normalized:
-        await message.answer("Введите корректный номер телефона в формате +7XXXXXXXXXX.")
+        await message.answer(
+            "Введите корректный номер телефона в формате +7XXXXXXXXXX или отправьте контакт кнопкой ниже.",
+            reply_markup=_share_phone_kb(),
+        )
         return
 
     data = await state.get_data()
     specialist = data.get("specialist", "Не указан")
     full_name = data.get("full_name", "Не указано")
+    await _bind_user_by_phone(
+        chat_id=message.from_user.id,
+        raw_phone=normalized,
+        fallback_name=full_name,
+    )
 
     admin_message = (
         "🆕 Новая заявка на консультацию\n\n"
@@ -346,7 +415,8 @@ async def consultation_get_phone(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
         "Спасибо!\n"
-        "Администратор свяжется с Вами для подтверждения записи."
+        "Администратор свяжется с Вами для подтверждения записи.",
+        reply_markup=_main_menu_kb(),
     )
     await message.answer(
         "Полезная информация перед приёмом:\n"
@@ -362,8 +432,9 @@ async def my_records(message: Message) -> None:
         user = await UserCRUD.get_by_chat_id(session, message.from_user.id)
     if not user or not user.yclients_client_id:
         await message.answer(
-            "Пока не удалось найти ваши записи в системе.\n"
-            "Нажмите «📅 Записаться на консультацию», и администратор поможет."
+            "Чтобы найти ваши записи, поделитесь номером телефона.\n"
+            "Я найду пациента в базе клиники по номеру и привяжу записи к этому Telegram.",
+            reply_markup=_share_phone_kb(),
         )
         return
     try:
@@ -393,6 +464,21 @@ async def my_records(message: Message) -> None:
         await message.answer("Ближайших записей не найдено.")
         return
     await message.answer("Ваши ближайшие записи:\n" + "\n".join(upcoming[:5]))
+
+
+@commands_router.message(F.contact)
+async def contact_shared(message: Message) -> None:
+    if not message.contact or not message.contact.phone_number:
+        await message.answer("Пожалуйста, отправьте номер через кнопку «Поделиться номером телефона».")
+        return
+    if message.contact.user_id and message.contact.user_id != message.from_user.id:
+        await message.answer(
+            "Пожалуйста, отправьте свой контакт через кнопку, а не контакт другого человека.",
+            reply_markup=_share_phone_kb(),
+        )
+        return
+
+    await _register_user_by_phone(message, message.contact.phone_number)
 
 
 @commands_router.message(F.text == "🦷 Стоимость лечения")

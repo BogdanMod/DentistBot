@@ -24,7 +24,7 @@ async def confirm_registration(
 
     async for session in db_manager.get_session():
         try:
-            await UserCRUD.create(
+            await UserCRUD.upsert_registered_user(
                 session=session,
                 chat_id=callback.from_user.id,
                 phone=phone,
