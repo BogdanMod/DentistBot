@@ -142,11 +142,6 @@ def _book_only_kb() -> InlineKeyboardMarkup:
 def _doctors_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Ортодонт-гнатолог", callback_data="doc_ortho_gnato")],
-            [InlineKeyboardButton(text="Ортодонт-гигиенист", callback_data="doc_ortho_hygienist")],
-            [InlineKeyboardButton(text="Терапевт", callback_data="doc_therapist")],
-            [InlineKeyboardButton(text="Хирург", callback_data="doc_surgeon")],
-            [InlineKeyboardButton(text="Ортопед", callback_data="doc_orthopedist")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")],
         ]
     )
@@ -598,7 +593,7 @@ async def back_cost_menu(callback) -> None:
 async def back_doctors_menu(callback) -> None:
     await callback.answer()
     await callback.message.answer(
-        "Наша команда специалистов работает комплексно, чтобы обеспечить максимально качественный результат лечения.",
+        "Раздел с врачами скоро обновим.",
         reply_markup=_doctors_menu_kb(),
     )
 
@@ -635,8 +630,7 @@ async def case_item(callback) -> None:
 @commands_router.message(F.text == "👩🏻‍⚕️ Наши врачи")
 async def doctors_start(message: Message) -> None:
     await message.answer(
-        "Наша команда специалистов работает комплексно, чтобы обеспечить "
-        "максимально качественный результат лечения.",
+        "Раздел с врачами скоро обновим.",
         reply_markup=_doctors_menu_kb(),
     )
 
@@ -644,25 +638,9 @@ async def doctors_start(message: Message) -> None:
 @commands_router.callback_query(F.data.startswith("doc_"))
 async def doctor_item(callback) -> None:
     await callback.answer()
-    doctor_map = {
-        "doc_ortho_gnato": ("Иванова Анна Сергеевна", "Ортодонт-гнатолог"),
-        "doc_ortho_hygienist": ("Петрова Мария Олеговна", "Ортодонт-гигиенист"),
-        "doc_therapist": ("Смирнов Алексей Викторович", "Терапевт"),
-        "doc_surgeon": ("Кузнецов Дмитрий Павлович", "Хирург"),
-        "doc_orthopedist": ("Соколова Елена Игоревна", "Ортопед"),
-    }
-    name, spec = doctor_map.get(callback.data, ("Врач", "Специалист"))
     await callback.message.answer(
-        "Фото врача\n"
-        f"{name}\n"
-        f"{spec}\n\n"
-        "Краткое описание:\n"
-        "• опыт работы: 10+ лет\n"
-        "• ключевые направления: комплексное лечение\n"
-        "• подход: персональный план и бережная коммуникация\n\n"
-        "Видео от врача (30–40 сек):\n"
-        "чем занимается и какой подход к лечению.",
-        reply_markup=_doctor_actions_kb(),
+        "Раздел с врачами скоро обновим.",
+        reply_markup=_doctors_menu_kb(),
     )
 
 
