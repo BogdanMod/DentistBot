@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -144,53 +145,18 @@ class ReminderScheduler:
                 continue
 
             try:
-                async for session in db_manager.get_session():
-                    user = await UserCRUD.get_by_yclients_client_id(
-                        session=session,
-                        yclients_client_id=cid,
-                    )
-
-                    if not user:
-                        logger.info(
-                            f"Skip record {rid}: no bot user for yclients_client_id={cid}"
-                        )
-                        skipped_count += 1
-                        stats["skip_no_user"] = int(stats["skip_no_user"]) + 1
-                        continue
-
-                    existing = await ReminderCRUD.get_by_record_id(
-                        session=session,
-                        record_id=rid,
-                    )
-
-                    if existing and existing.is_sent:
-                        skipped_count += 1
-                        stats["skip_already_sent"] = int(stats["skip_already_sent"]) + 1
-                        continue
-
-                    if not existing:
-                        reminder = await ReminderCRUD.create(
-                            session=session,
-                            user_chat_id=user.chat_id,
-                            record_id=rid,
-                            appointment_datetime=appt_dt,
-                            service_name=record_service_name(record),
-                            staff_name=record_staff_name(record),
-                        )
-                    else:
-                        reminder = existing
-
-                    success = await send_reminder_notification(
-                        bot=self.bot,
-                        reminder=reminder,
-                    )
-
-                    if success:
-                        sent_count += 1
-                    else:
-                        skipped_count += 1
-                        stats["send_failed"] = int(stats["send_failed"]) + 1
-
+                result = await self._process_single_record(
+                    record=record,
+                    rid=rid,
+                    cid=cid,
+                    appt_dt=appt_dt,
+                )
+                if result == "sent":
+                    sent_count += 1
+                else:
+                    skipped_count += 1
+                    if result in stats:
+                        stats[result] = int(stats[result]) + 1
             except Exception as e:
                 logger.error(f"Error processing record {rid}: {str(e)}", exc_info=True)
                 skipped_count += 1
@@ -200,6 +166,70 @@ class ReminderScheduler:
         stats["sent_count"] = sent_count
         stats["skipped_count"] = skipped_count
         return stats
+
+    async def _process_single_record(
+        self,
+        *,
+        record: dict,
+        rid: int,
+        cid: int,
+        appt_dt: datetime,
+    ) -> str:
+        """Обработка одной записи в отдельной сессии.
+
+        Возвращает:
+            'sent' — отправлено
+            'skip_no_user' — нет пользователя в боте
+            'skip_already_sent' — уже отправлено ранее
+            'send_failed' — ошибка при отправке
+        """
+        async for session in db_manager.get_session():
+            user = await UserCRUD.get_by_yclients_client_id(
+                session=session,
+                yclients_client_id=cid,
+            )
+
+            if not user:
+                logger.info(
+                    f"Skip record {rid}: no bot user for yclients_client_id={cid}"
+                )
+                return "skip_no_user"
+
+            existing = await ReminderCRUD.get_by_record_id(
+                session=session,
+                record_id=rid,
+            )
+
+            if existing and existing.is_sent:
+                logger.info(f"Skip record {rid}: reminder already sent")
+                return "skip_already_sent"
+
+            if not existing:
+                reminder = await ReminderCRUD.create(
+                    session=session,
+                    user_chat_id=user.chat_id,
+                    record_id=rid,
+                    appointment_datetime=appt_dt,
+                    service_name=record_service_name(record),
+                    staff_name=record_staff_name(record),
+                )
+            else:
+                reminder = existing
+
+            success = await send_reminder_notification(
+                bot=self.bot,
+                reminder=reminder,
+            )
+
+            if success:
+                logger.info(f"Reminder for record {rid} sent successfully")
+                return "sent"
+            else:
+                logger.warning(f"Reminder for record {rid} failed to send")
+                return "send_failed"
+
+        # Если генератор не отдал сессию (теоретически невозможно)
+        return "send_failed"
 
     def start(self) -> None:
         """Запуск планировщика: раз в день в REMINDER_CHECK_TIME по REMINDER_TIMEZONE."""
@@ -219,6 +249,9 @@ class ReminderScheduler:
             except Exception as e:
                 logger.error("Failed to send daily admin report: %s", e, exc_info=True)
 
+        # AsyncIOScheduler требует явного AsyncIOExecutor для корутин-задач
+        self.scheduler.add_executor(AsyncIOExecutor(), "asyncio")
+
         self.scheduler.add_job(
             _run,
             trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
@@ -227,6 +260,7 @@ class ReminderScheduler:
             # Если бот был выключен в 10:00 — при следующем старте всё равно выполнить (в течение суток)
             misfire_grace_time=86400,
             coalesce=True,
+            executor="asyncio",
         )
 
         self.scheduler.start()
